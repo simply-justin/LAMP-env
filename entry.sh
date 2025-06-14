@@ -3,23 +3,41 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-#---------------------------------------------------#
-#   Usage                                           #
-#   Parse args (token + optional --exclude/--only)  #
-#---------------------------------------------------#
+#-------------------------------------------------------#
+#   Environment Setup Script                            #
+#   This script manages the setup and configuration     #
+#   of your development environment.                    #
+#-------------------------------------------------------#
+
+#-------------------------------------------------------#
+#   Usage                                               #
+#   Parse args (token + optional --exclude/--only)      #
+#-------------------------------------------------------#
 usage() {
 cat <<EOF
     Usage: $0 [--exclude a,b] [--only x,y] [githubToken]
+    
+    This script sets up your development environment by:
+    1. Bootstrapping required dependencies
+    2. Running environment setup scripts
+    3. Configuring development tools
+    
     Positional:
-        githubToken         Your Github token
+        githubToken         Your Github token for repository access
 
     Options:
-        --exclude LIST      Comma-seperated list of script names (without .sh) to skip
-        --only LIST         Comma-seperated list of script names to run (mutally exclusive)
+        --exclude LIST      Comma-separated list of script names (without .sh) to skip
+        --only LIST         Comma-separated list of script names to run (mutually exclusive)
+        
+    Examples:
+        $0 your_github_token
+        $0 your_github_token --exclude docker,node
+        $0 your_github_token --only git,php
 EOF
 exit 1
 }
 
+# Parse command line arguments
 EXCLUDE=()
 ONLY=()
 GITHUB_TOKEN=""
@@ -55,18 +73,18 @@ while (( $# )); do
     esac
 done
 
+# Validate arguments
 [[ -z "$GITHUB_TOKEN" ]] && echo "Error: Github token is required" >&2 && usage
 if (( ${#EXCLUDE[@]} > 0 && ${#ONLY[@]} > 0 )); then
     echo "Error: --exclude and --only cannot be used together" >&2
     exit 1
 fi
 
-#---------------------------------------------------#
-#   Main                                            #
-#---------------------------------------------------#
+#-------------------------------------------------------#
+#   Environment Setup                                   #
+#-------------------------------------------------------#
 
-export GITHUB_TOKEN
-
+# Set up environment variables
 HOME="$(pwd)"
 ENV_DIR="$HOME/.env"
 SCRIPT_DIR="$HOME/.env/scripts"
@@ -77,13 +95,18 @@ export ENV_DIR
 export SCRIPT_DIR
 export CONFIG_DIR
 
+export GITHUB_TOKEN
+
 # Require root privileges
 if [[ $EUID -ne 0 ]]; then
-  echo "This script must be run as root."
-  exit 1
+    echo "This script must be run as root."
+    exit 1
 fi
 
-# Execute scripts
+# Source helper functions
+source "$SCRIPT_DIR/env/helpers.sh"
+
+# Execute environment setup scripts
 for script_path in "$SCRIPT_DIR"/env/[0-9][0-9]-*.sh; do
     script_file=$(basename "$script_path")
     name="${script_file#??-}"
@@ -94,9 +117,14 @@ for script_path in "$SCRIPT_DIR"/env/[0-9][0-9]-*.sh; do
     if (( ${#ONLY[@]} )); then
         [[ ! " ${ONLY[*]} " =~ " ${name} " ]] && continue
     elif (( ${#EXCLUDE[@]} )); then
-        [[ ! " ${EXCLUDE[*]} " =~ " ${name} " ]] && continue
+        [[ " ${EXCLUDE[*]} " =~ " ${name} " ]] && continue
     fi
 
-    echo "-> Running $script_file"
-    bash "$script_path" "$GITHUB_TOKEN"
+    log_info "Running $script_file"
+    if ! bash "$script_path"; then
+        log_error "Script $script_file failed"
+        exit 1
+    fi
 done
+
+log_info "Environment setup completed successfully!"
