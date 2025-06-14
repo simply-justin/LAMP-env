@@ -47,7 +47,7 @@ fi
 log_info "Processing $repo_count repositories from configuration"
 
 # Create development directory
-DEV_DIR="$HOME/../dev"
+DEV_DIR="${HOME}/dev"
 if ! mkdir -p "$DEV_DIR"; then
     log_error "Failed to create development directory: $DEV_DIR"
     exit 1
@@ -68,7 +68,7 @@ for i in $(seq 0 $((repo_count - 1))); do
     log_info "Setting up repository: $org/$repo"
     
     # Clone and install repository
-    if ! clone_and_install "$org" "$repo" "$target_dir"; then
+    if ! clone_and_install "$org" "$repo" "${HOME}${target_dir}/${repo}"; then
         log_error "Failed to setup repository: $org/$repo"
         continue
     fi
@@ -80,7 +80,7 @@ for i in $(seq 0 $((repo_count - 1))); do
         sudo rm "$symlink_path"
     fi
 
-    if ! sudo ln -s "$HOME/../$target_dir" "$symlink_path"; then
+    if ! sudo ln -s "${HOME}${target_dir}/${repo}" "$symlink_path"; then
         log_error "Failed to create symbolic link for $repo"
         continue
     fi
