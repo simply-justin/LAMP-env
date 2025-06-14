@@ -1,70 +1,57 @@
-# LAMP Development Environment Setup
+# Development Environment Setup
 
-This repository contains scripts and configurations for setting up a complete LAMP (Linux, Apache, MySQL, PHP) development environment.
-
-## Features
-
-- Automated environment setup with modular scripts
-- Configurable installation process
-- Support for multiple projects and repositories
-- Apache virtual hosts configuration
-- Node.js ecosystem configuration
-
-## Prerequisites
-
-- Linux-based operating system
-- Root/sudo access
-- GitHub account with personal access token
+This repository contains scripts and configurations for setting up a complete development environment for web applications.
 
 ## Quick Start
 
 1. Clone this repository:
    ```bash
    git clone <repository-url>
-   cd LAMP-env
+   cd <repository-name>
    ```
 
-2. Run the setup script with your GitHub token:
+2. Run the setup scripts in order:
    ```bash
-   sudo ./entry.sh your_github_token
+   ./scripts/01-dependencies.sh
+   ./scripts/02-environment.sh
+   ./scripts/03-setup-projects.sh
    ```
 
-## Configuration
+## Prerequisites
 
-### Script Options
-
-The setup script supports the following options:
-
-- `--exclude`: Skip specific setup scripts (comma-separated)
-- `--only`: Run only specific setup scripts (comma-separated)
-
-Example:
-```bash
-sudo ./entry.sh your_github_token --exclude docker,node
-```
-
-### Project Configuration
-
-- Edit `configs/repos.json` to configure your project repositories
-- Modify `configs/vhosts/` for Apache virtual host configurations
-- Update `configs/ecosystem.config.js` for Node.js application settings
+- Ubuntu/Debian-based system
+- Git
+- Sudo privileges
+- Internet connection
 
 ## Directory Structure
 
 ```
 .
-├── configs/                        # Configuration files
-│   ├── vhosts/                     # Apache virtual host configurations
-│   ├── ecosystem.config.js
-│   └── repos.json
-├── scripts/                        # Setup scripts
-│   └── env/                        # Environment setup scripts
-│       ├── 01-dependencies.sh
-│       ├── 02-environment.sh
-│       ├── 03-setup-projects.sh
-│       └── helpers.sh
-└── entry.sh                        # Main entry point script
+├── configs/               # Configuration files
+│   └── vhosts/           # Apache virtual host configurations
+├── scripts/              # Setup scripts
+│   ├── 01-dependencies.sh # Dependencies installation
+│   ├── 02-environment.sh  # Environment configuration
+│   └── 03-setup-projects.sh # Project setup
+└── env/                  # Environment helpers
+    └── helpers/          # Helper scripts
 ```
+
+## Scripts Overview
+
+### 01-dependencies.sh
+Installs core development dependencies (PHP, Node.js, Composer, etc.)
+
+### 02-environment.sh
+Configures web server, database, and caching services
+
+### 03-setup-projects.sh
+Sets up development projects and process management
+
+## Configuration
+
+See the [configs/README.md](configs/README.md) for detailed configuration instructions.
 
 ## Contributing
 
@@ -72,7 +59,7 @@ sudo ./entry.sh your_github_token --exclude docker,node
 2. Create your feature branch
 3. Commit your changes
 4. Push to the branch
-5. Create a new Pull Request
+5. Create a Pull Request
 
 ## License
 

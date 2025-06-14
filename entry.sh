@@ -9,9 +9,29 @@ IFS=$'\n\t'
 #   of your development environment.                    #
 #-------------------------------------------------------#
 
+# Require root privileges
+if [[ $EUID -ne 0 ]]; then
+    echo "This script must be run as root."
+    exit 1
+fi
+
+HOME="$(pwd)"
+
+export HOME
+export ENV_DIR="$HOME/LAMP-env"
+export SCRIPT_DIR="$HOME/LAMP-env/scripts"
+export CONFIG_DIR="$HOME/LAMP-env/configs"
+export CURRENT_USER="${SUDO_USER:-$(whoami)}"
+
+export COMPOSER_ALLOW_SUPERUSER=1
+
+readonly HOME ENV_DIR SCRIPT_DIR CONFIG_DIR CURRENT_USER
+
+# Source helper functions
+source "$SCRIPT_DIR/helpers.sh"
+
 #-------------------------------------------------------#
-#   Usage                                               #
-#   Parse args (token + optional --exclude/--only)      #
+#   Usage Manual                                        #
 #-------------------------------------------------------#
 usage() {
 cat <<EOF
@@ -38,89 +58,71 @@ exit 1
 }
 
 # Parse command line arguments
-EXCLUDE=()
-ONLY=()
-GITHUB_TOKEN=""
+exclude=()
+only=()
+github_token=""
 
 while (( $# )); do
     case $1 in
         --exclude)
-        [[ -z "${2-}" ]] && echo "Error: --exclude needs a value" >&2 && usage
-        IFS=, read -r -a EXCLUDE <<< "$2"
-        shift 2
-        ;;
+            [[ -z "${2-}" ]] && echo "Error: --exclude needs a value" >&2 && usage
+            IFS=',' read -r -a exclude <<< "$2"
+            shift 2
+            ;;
         --only)
-        [[ -z "${2-}" ]] && echo "Error: --only needs a value" >&2 && usage
-        IFS=, read -r -a ONLY <<< "$2"
-        shift 2
-        ;;
-        -help|-h)
-        usage
-        ;;
+            [[ -z "${2-}" ]] && echo "Error: --only needs a value" >&2 && usage
+            IFS=',' read -r -a only <<< "$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
         -*)
-        echo "Unknown option: $1" >&2
-        usage
-        ;;
+            echo "Unknown option: $1" >&2
+            usage
+            ;;
         *)
-            if [[ -z "$GITHUB_TOKEN" ]]; then
-                GITHUB_TOKEN="$1"
+            if [[ -z "$github_token" ]]; then
+                github_token="$1"
                 shift
             else
                 echo "Unexpected argument: $1" >&2
                 usage
             fi
-        ;;
+            ;;
     esac
 done
 
 # Validate arguments
-[[ -z "$GITHUB_TOKEN" ]] && echo "Error: Github token is required" >&2 && usage
-if (( ${#EXCLUDE[@]} > 0 && ${#ONLY[@]} > 0 )); then
-    echo "Error: --exclude and --only cannot be used together" >&2
+if [[ -z "$github_token" ]]; then
+    log_error "GitHub token is required" >&2
+    usage
+fi
+
+if (( ${#exclude[@]} > 0 && ${#only[@]} > 0 )); then
+    log_error "--exclude and --only cannot be used together" >&2
     exit 1
 fi
 
 #-------------------------------------------------------#
-#   Environment Setup                                   #
+#   Execute environment setup scripts                   #
 #-------------------------------------------------------#
+export github_token
 
-# Set up environment variables
-HOME="$(pwd)"
-ENV_DIR="$HOME/LAMP-env"
-SCRIPT_DIR="$HOME/LAMP-env/scripts"
-CONFIG_DIR="$HOME/LAMP-env/configs"
-
-export HOME
-export ENV_DIR
-export SCRIPT_DIR
-export CONFIG_DIR
-
-export GITHUB_TOKEN
-
-# Require root privileges
-if [[ $EUID -ne 0 ]]; then
-    echo "This script must be run as root."
-    exit 1
-fi
-
-# Source helper functions
-source "$SCRIPT_DIR/env/helpers.sh"
-
-# Execute environment setup scripts
-for script_path in "$SCRIPT_DIR"/env/[0-9][0-9]-*.sh; do
+for script_path in "$SCRIPT_DIR"/[0-9][0-9]-*.sh; do
     script_file=$(basename "$script_path")
     name="${script_file#??-}"
     name="${name%.sh}"
 
     [[ "$name" == "helpers" ]] && continue
 
-    if (( ${#ONLY[@]} )); then
-        [[ ! " ${ONLY[*]} " =~ " ${name} " ]] && continue
-    elif (( ${#EXCLUDE[@]} )); then
-        [[ " ${EXCLUDE[*]} " =~ " ${name} " ]] && continue
+    if (( ${#only[@]} > 0 )); then
+        [[ " ${only[*]} " != *" $name "* ]] && continue
+    elif (( ${#exclude[@]} > 0 )); then
+        [[ " ${exclude[*]} " == *" $name "* ]] && continue
     fi
 
-    log_info "Running $script_file"
+    log_section "$script_file"
     if ! bash "$script_path"; then
         log_error "Script $script_file failed"
         exit 1
