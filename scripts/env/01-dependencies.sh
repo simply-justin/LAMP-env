@@ -27,7 +27,19 @@ sudo apt-get update -y
 
 # Install PHP dependencies
 log_info "Installing PHP Dependencies..."
-sudo apt-get install -y php8.3 php8.3-{mysql,mbstring,xml,curl,bcmath,zip,tokenizer,common,cli,gd,intl}
+
+require_command php8.3
+require_command php8.3-mysql
+require_command php8.3-mbstring
+require_command php8.3-xml
+require_command php8.3-curl
+require_command php8.3-bcmath
+require_command php8.3-zip
+require_command php8.3-common
+require_command php8.3-cli
+require_command php8.3-gd
+require_command php8.3-intl
+require_command unzip
 
 # Install Composer, NVM
 #---------------------------------------------------#
