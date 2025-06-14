@@ -6,6 +6,11 @@ IFS=$'\n\t'
 # Load shared helpers
 source "${SCRIPT_DIR}/env/helpers.sh"
 
+# Ensure NPM is initialized
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm use node
+
 #---------------------------------------------------#
 #   Main                                            #
 #---------------------------------------------------#
@@ -17,10 +22,10 @@ require_command apache2
 
 log_info "Enabling Apache modules..."
 for module in proxy proxy_http proxy_wstunnel rewrite; do
-  a2enmod "$module" || log_warn "Could not enable module $module"
+  sudo a2enmod "$module" || log_warn "Could not enable module $module"
 done
 
-a2dissite 000-default.conf || true
+sudo a2dissite 000-default.conf || true
 
 log_info "Removing default Apache config files if they exist..."
 for conf in /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-available/default-ssl.conf; do
@@ -34,7 +39,7 @@ if grep -q "^Listen 0.0.0.0:80" "$PORTS_CONF"; then
   log_info "Apache is already configured to listen on 0.0.0.0:80"
 else
   cp "$PORTS_CONF" "${PORTS_CONF}.bak"
-  sed -i 's/^Listen .*\(:80\)/Listen 0.0.0.0:80/' "$PORTS_CONF"
+  sudo sed -i 's/^Listen .*\(:80\)/Listen 0.0.0.0:80/' "$PORTS_CONF"
   log_info "Updated ports.conf to listen on 0.0.0.0:80"
 fi
 
@@ -48,8 +53,8 @@ if [ -d "$VHOST_DIR" ]; then
       log_info "Skipping existing vhost: $(basename "$vhost_file")"
     else
       log_info "Copying and enabling vhost: $(basename "$vhost_file")"
-      cp "$vhost_file" "$dest"
-      a2ensite "$(basename "$vhost_file")"
+      sudo cp "$vhost_file" "$dest"
+      sudo a2ensite "$(basename "$vhost_file")"
     fi
   done
 else
@@ -57,7 +62,7 @@ else
 fi
 
 log_info "Restarting Apache..."
-systemctl restart apache2 || log_error "Apache failed to restart"
+sudo systemctl restart apache2 || log_error "Apache failed to restart"
 
 # Install MariaDB
 #---------------------------------------------------#
@@ -65,25 +70,25 @@ log_info "Installing MariaDB..."
 require_command mariadb-server
 
 log_info "Starting and enabling MariaDB..."
-systemctl enable mariadb
-systemctl start mariadb
+sudo systemctl enable mariadb
+sudo systemctl start mariadb
 
 # Install Redis
 #---------------------------------------------------#
 log_info "Installing Redis..."
 
-if [ ! -f /usr/share/keyrings/redis-archive-keyring.gpg ]; then
-  curl -fsSL https://packages.redis.io/gpg | gpg --yes --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+if [ ! -f "/usr/share/keyrings/redis-archive-keyring.gpg" ]; then
+  curl -fsSL https://packages.redis.io/gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
 fi
 
 echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | \
-  tee /etc/apt/sources.list.d/redis.list > /dev/null
+  sudo tee /etc/apt/sources.list.d/redis.list > /dev/null
 
 require_command redis
 
 log_info "Starting Redis..."
-systemctl enable redis-server
-systemctl start redis-server
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
 
 log_info "Environment setup complete."
 
@@ -91,9 +96,9 @@ log_info "Environment setup complete."
 #---------------------------------------------------#
 log_info "Setup PM2..."
 
-mkdir -p /etc/pm2
-cp $CONFIG_DIR/ecosystem.config.js /etc/pm2/ecosystem.config.js
+sudo mkdir -p /etc/pm2
+sudo cp $CONFIG_DIR/ecosystem.config.js /etc/pm2/ecosystem.config.js
 
-pm2 start /etc/pm2/ecosystem.config.js
-pm2 save
-pm2 startup
+sudo pm2 start /etc/pm2/ecosystem.config.js
+sudo pm2 save
+sudo pm2 startup

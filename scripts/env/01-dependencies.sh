@@ -14,7 +14,7 @@ export NVM_DIR="$HOME/.nvm"
 
 # Update environment
 #---------------------------------------------------#
-apt-get update -y && apt-get upgrade -y
+sudo apt-get update -y && sudo apt-get upgrade -y
 
 # Install the critical dependencies eg. Curl & PHP.
 #---------------------------------------------------#
@@ -22,12 +22,12 @@ log_info "Installing Curl and PHP..."
 require_command curl
 require_command software-properties-common
 
-add-apt-repository -y ppa:ondrej/php
-apt-get update -y
+sudo add-apt-repository -y ppa:ondrej/php
+sudo apt-get update -y
 
 # Install PHP dependencies
 log_info "Installing PHP Dependencies..."
-apt-get install -y php8.3 php8.3-{mysql,mbstring,xml,curl,bcmath,zip,tokenizer,common,cli,gd,intl}
+sudo apt-get install -y php8.3 php8.3-{mysql,mbstring,xml,curl,bcmath,zip,tokenizer,common,cli,gd,intl}
 
 # Install Composer, NVM
 #---------------------------------------------------#
