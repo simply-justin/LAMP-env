@@ -86,9 +86,9 @@ fi
 
 # Set up environment variables
 HOME="$(pwd)"
-ENV_DIR="$HOME/.env"
-SCRIPT_DIR="$HOME/.env/scripts"
-CONFIG_DIR="$HOME/.env/configs"
+ENV_DIR="$HOME/LAMP-env"
+SCRIPT_DIR="$HOME/LAMP-env/scripts"
+CONFIG_DIR="$HOME/LAMP-env/configs"
 
 export HOME
 export ENV_DIR
