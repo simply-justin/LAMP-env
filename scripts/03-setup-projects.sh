@@ -72,7 +72,7 @@ clone_and_install() {
     # Install PHP dependencies if composer.json exists
     if file_exists "composer.json"; then
         log_info "Installing PHP dependencies for $repo"
-        log_command "sudo -u $CURRENT_USER composer install --no-interaction" || {
+        log_command "composer install --no-interaction" || {
             log_failure "Failed to install PHP dependencies"
             return 1
         }
@@ -81,7 +81,7 @@ clone_and_install() {
     # Install Node.js dependencies if package.json exists
     if file_exists "package.json"; then
         log_info "Installing Node.js dependencies for $repo"
-        log_command "sudo -u $CURRENT_USER npm install --no-audit --no-fund" || {
+        log_command "npm install --no-audit --no-fund" || {
             log_failure "Failed to install Node.js dependencies"
             return 1
         }
