@@ -77,6 +77,12 @@ export ENV_DIR
 export SCRIPT_DIR
 export CONFIG_DIR
 
+# Require root privileges
+if [[ $EUID -ne 0 ]]; then
+  echo "This script must be run as root."
+  exit 1
+fi
+
 # Execute scripts
 for script_path in "$SCRIPT_DIR"/env/[0-9][0-9]-*.sh; do
     script_file=$(basename "$script_path")
