@@ -160,8 +160,6 @@ if ! command_exists pm2; then
         log_failure "PM2 installation failed"
         exit 1
     fi
-
-    sudo chown $CURRENT_USER:$CURRENT_USER /home/$CURRENT_USER/.pm2/rpc.sock /home/$CURRENT_USER/.pm2/pub.sock
 fi
 
 log_success "Dependencies installation completed successfully!"
