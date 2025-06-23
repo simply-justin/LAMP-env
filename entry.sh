@@ -30,7 +30,7 @@ source "$SCRIPT_DIR/helpers/include.sh"
 #-------------------------------------------------------#
 usage() {
 cat <<EOF
-    Usage: $0 [--exclude a,b] [--only x,y] [--debug] [githubToken]
+    Usage: $0 [--exclude a,b] [--only x,y] [--php] [--debug] [githubToken]
 
     This script sets up your development environment by:
     1. Bootstrapping required dependencies

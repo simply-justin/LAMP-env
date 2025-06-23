@@ -59,27 +59,40 @@ ensure_directory "${HOME}/dev" || exit 1
 
 # Process each repository
 log_debug "Processing $repo_count repositories from configuration"
+
+declare -a processIds
+
 for i in $(seq 0 $((repo_count - 1))); do
-    # Extract repository information
+    (
+        org=$(jq -r ".[$i].org" "$REPO_FILE")
+        repo=$(jq -r ".[$i].repo" "$REPO_FILE")
+        target_dir=$(jq -r ".[$i].target_dir" "$REPO_FILE")
+
+        # Exit process since its configuration is invalid
+        [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ] && exit 1
+
+        clone_and_install "$org" "$repo" "${HOME}${target_dir}/${repo}" || exit 1
+
+        log_debug "Finished setup for $repo"
+    ) &
+    processIds+=($!)
+done
+
+# Wait for all parallel tasks to finish
+for pid in "${processIds[@]}"; do
+    wait "$processIds" || log_error "One of the setup processes have failed"
+done
+
+log_debug "All project installation processes are complete"
+
+# Now handle symlinks serially (as they often require sudo and global paths)
+for i in $(seq 0 $((repo_count - 1))); do
     org=$(jq -r ".[$i].org" "$REPO_FILE")
     repo=$(jq -r ".[$i].repo" "$REPO_FILE")
     target_dir=$(jq -r ".[$i].target_dir" "$REPO_FILE")
 
-    # Validate repository configuration
-    if [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ]; then
-        log_error "Invalid repository configuration at index $i"
-        continue
-    fi
+    [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ] && continue
 
-    log_debug "Setting up repository: $org/$repo"
-
-    # Clone and install repository
-    if ! clone_and_install "$org" "$repo" "${HOME}${target_dir}/${repo}"; then
-        log_error "Failed to setup repository: $org/$repo"
-        continue
-    fi
-
-    # Create symbolic link
     symlink_path="/var/www/$repo"
     if [ -L "$symlink_path" ]; then
         log_debug "Remove existing symbolic link: $symlink_path"
@@ -98,7 +111,7 @@ for i in $(seq 0 $((repo_count - 1))); do
         continue
     fi
 
-    log_info "Successfully configured repository: $org/$repo"
+    log_info "Successfully configured project: $org/$repo"
 done
 
 #-------------------------------------------------------#
@@ -112,7 +125,23 @@ fi
 
 # Configure PM2 to start on system boot
 log_debug "saving the PM2 processes to startup"
-if ! pm2 save && pm2 startup; then
-    log_error "Failed to configure PM2 startup"
+
+# Dynamically detect the real username
+PM2_USERNAME=$(logname 2>/dev/null || echo "$USER")
+PM2_USER_HOME=$(eval echo "~$PM2_USERNAME")
+PM2_STARTUP_CMD=$(pm2 startup systemd -u "$PM2_USERNAME" --hp "$PM2_USER_HOME" | grep sudo)
+
+if [[ -n "$PM2_STARTUP_CMD" ]]; then
+    log_debug "Executing: $PM2_STARTUP_CMD"
+    eval "$PM2_STARTUP_CMD"
+else
+    log_error "Failed to generate PM2 startup command"
+    exit 1
+fi
+
+# Save the current PM2 process list
+log_info "Saving current PM2 process list"
+if ! pm2 save; then
+    log_error "Failed to save PM2 process list"
     exit 1
 fi
