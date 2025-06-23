@@ -80,7 +80,7 @@ done
 
 # Wait for all parallel tasks to finish
 for pid in "${processIds[@]}"; do
-    wait "$processIds" || log_error "One of the setup processes have failed"
+    wait "$pid" || log_error "One of the setup processes have failed"
 done
 
 log_debug "All project installation processes are complete"
@@ -126,18 +126,7 @@ fi
 # Configure PM2 to start on system boot
 log_debug "saving the PM2 processes to startup"
 
-# Dynamically detect the real username
-PM2_USERNAME=$(logname 2>/dev/null || echo "$USER")
-PM2_USER_HOME=$(eval echo "~$PM2_USERNAME")
-PM2_STARTUP_CMD=$(pm2 startup systemd -u "$PM2_USERNAME" --hp "$PM2_USER_HOME" | grep sudo)
-
-if [[ -n "$PM2_STARTUP_CMD" ]]; then
-    log_debug "Executing: $PM2_STARTUP_CMD"
-    eval "$PM2_STARTUP_CMD"
-else
-    log_error "Failed to generate PM2 startup command"
-    exit 1
-fi
+eval "$(pm2 startup | grep sudo)"
 
 # Save the current PM2 process list
 log_info "Saving current PM2 process list"

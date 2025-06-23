@@ -67,7 +67,7 @@ else
     log_info "PHP repository is already configured"
 fi
 
-for php_version in "${PHP_VERSIONS[@]}"; do    
+for php_version in "${PHP_VERSIONS[@]}"; do
     # List of PHP packages to install
     php_packages=(
         "php${php_version}"           # Core PHP package

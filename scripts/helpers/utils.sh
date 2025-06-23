@@ -42,7 +42,7 @@ require_command() {
     fi
 
     # If not found, install it
-    sudo apt-get install -y $package || {
+    sudo apt-get install -y "$package" || {
         log_error "Failed to install package: $package"
         return 1
     }
@@ -131,44 +131,42 @@ clone_and_install() {
     local repo="$2"
     local target_dir="$3"
 
-    if directory_exists "$target_dir/.git"; then
-        log_warn "Repository already exists: $repo, not cloning again"
-        return 0
+    if ! directory_exists "$target_dir/.git"; then
+        # Construct repository URL with optional authentication
+        local repo_url="https://github.com/${org}/${repo}.git"
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            repo_url="https://${GITHUB_TOKEN}@github.com/${org}/${repo}.git"
+            log_debug "Using authenticated GitHub URL"
+        fi
+
+        log_info "Cloning: $repo"
+        git clone "$repo_url" "$target_dir" || {
+            log_error "Failed to clone: $repo"
+            return 1
+        }
     fi
 
-    # Construct repository URL with optional authentication
-    local repo_url="https://github.com/${org}/${repo}.git"
-    if [ -n "${GITHUB_TOKEN:-}" ]; then
-        repo_url="https://${GITHUB_TOKEN}@github.com/${org}/${repo}.git"
-        log_debug "Using authenticated GitHub URL"
-    fi
-
-    log_info "Cloning: $repo"
-    git clone "$repo_url" "$target_dir" || {
-        log_error "Failed to clone: $repo"
-        return 1
-    }
-
-    log_debug "Changing to the target directory"
+    log_debug "Changing to the target directory: $target_dir"
     cd "$target_dir" || {
         log_error "Failed to change directory to: $target_dir"
         return 1
     }
 
-    # Install PHP dependencies if composer.json exists
-    if file_exists "composer.json"; then
+    # Install PHP dependencies if composer.json exists and composer.lock does not
+    if file_exists "composer.json" && ! file_exists "composer.lock"; then
         log_info "Installing PHP dependencies for $repo"
         composer install --no-interaction || {
-            log_error "Failed to install PHP dependencies"
+            log_error "Failed to install PHP dependencies for $repo"
             return 1
         }
     fi
 
-    # Install Node.js dependencies if package.json exists
-    if file_exists "package.json"; then
+    export CI=true
+    # Install Node.js dependencies if package.json exists and package-lock.json does not
+    if file_exists "package.json" && ! file_exists "package-lock.json"; then
         log_info "Installing Node.js dependencies for $repo"
-        npm install --no-audit --no-fund || {
-            log_error "Failed to install Node.js dependencies"
+        npm install --no-audit --no-fund --yes --loglevel=error || {
+            log_error "Failed to install Node.js dependencies for $repo"
             return 1
         }
     fi
