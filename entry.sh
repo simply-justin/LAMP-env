@@ -5,6 +5,12 @@
 #==============================================================================
 # This script manages the setup and configuration
 # of your development environment.
+#
+# Expected Environment:
+#   - Ubuntu/Debian-based Linux
+#   - Bash shell
+#   - Sudo privileges required for some operations
+#   - Internet access for package installation
 #==============================================================================
 
 set -euo pipefail
@@ -59,6 +65,9 @@ exit 1
 #-------------------------------------------------------#
 # Parse arguments
 #-------------------------------------------------------#
+# This section parses command-line arguments and sets up
+# script behavior based on user input. It supports exclusion,
+# inclusion, PHP version selection, and debug mode.
 PHP_VERSIONS=()
 exclude=()
 only=()
@@ -67,16 +76,19 @@ while (( $# )); do
     case $1 in
         --exclude)
             [[ -z "${2-}" ]] && echo "Error: --exclude needs a value" >&2 && usage
+            # Parse comma-separated list into array
             IFS=',' read -r -a exclude <<< "$2"
             shift 2
             ;;
         --only)
             [[ -z "${2-}" ]] && echo "Error: --only needs a value" >&2 && usage
+            # Parse comma-separated list into array
             IFS=',' read -r -a only <<< "$2"
             shift 2
             ;;
         --php)
             [[ -z "${2-}" ]] && echo "Error: --php needs a value" >&2 && usage
+            # Parse comma-separated list into PHP_VERSIONS array
             IFS=',' read -ra VERSIONS <<< "$2"
             for version in "${VERSIONS[@]}"; do
                 PHP_VERSIONS+=("$version")
@@ -84,6 +96,7 @@ while (( $# )); do
             shift 2
             ;;
         --d|--debug)
+            # Enable debug logging
             export LOG_LEVEL=0
             shift
             ;;
@@ -95,6 +108,7 @@ while (( $# )); do
             usage
             ;;
         *)
+            # First positional argument is the GitHub token
             if [[ -z "$GITHUB_TOKEN" ]]; then
                 GITHUB_TOKEN="$1"
                 shift
@@ -107,6 +121,7 @@ while (( $# )); do
 done
 
 # Validate arguments
+# Ensure required arguments and mutual exclusivity
 if [[ -z "$GITHUB_TOKEN" ]]; then
     log_error "GitHub token is required" >&2
     usage
@@ -128,14 +143,17 @@ export GITHUB_TOKEN
 #-------------------------------------------------------#
 # Execute environment setup scripts
 #-------------------------------------------------------#
-
+# This loop runs all numbered setup scripts in the scripts directory.
+# It respects --exclude and --only options to control which scripts run.
 for script_path in "$SCRIPT_DIR"/[0-9][0-9]-*.sh; do
     script_file=$(basename "$script_path")
     name="${script_file#??-}"
     name="${name%.sh}"
 
+    # Skip scripts not in the --only list (if provided)
     if (( ${#only[@]} > 0 )); then
         [[ " ${only[*]} " != *" $name "* ]] && continue
+    # Skip scripts in the --exclude list (if provided)
     elif (( ${#exclude[@]} > 0 )); then
         [[ " ${exclude[*]} " == *" $name "* ]] && continue
     fi

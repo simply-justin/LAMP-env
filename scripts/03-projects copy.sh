@@ -23,11 +23,23 @@ readonly REPO_FILE="${CONFIG_DIR}/projects.json"
 #-------------------------------------------------------#
 # Configuration Validation
 #-------------------------------------------------------#
-log_section "Validating Project Configuration"
+log_info "Configuration Validation"
 
-# Single check for jq, config file, and valid JSON
-if ! package_exists jq || ! file_exists "$REPO_FILE" || ! jq empty "$REPO_FILE" 2>/dev/null; then
-    log_error "JQ is required, or the repository configuration file is missing/invalid. Please check your setup."
+# Check for required tools
+if ! package_exists jq; then
+    log_error "JQ is required but not installed. Please install jq."
+    exit 1
+fi
+
+# Validate repository configuration file
+if ! file_exists "$REPO_FILE"; then
+    log_error "Repository configuration file not found: $REPO_FILE"
+    exit 1
+fi
+
+# Validate JSON structure
+if ! jq empty "$REPO_FILE" 2>/dev/null; then
+    log_error "Invalid JSON in repository configuration file"
     exit 1
 fi
 
@@ -71,16 +83,7 @@ for i in $(seq 0 $((repo_count - 1))); do
         # Exit process since its configuration is invalid
         [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ] && exit 1
 
-        if ! directory_exists "$target_dir/$repo"; then
-            repo_url="https://${GITHUB_TOKEN}@github.com/${org}/${repo}.git"
-
-            log_info "Cloning: $repo"
-            git clone "$repo_url" "$target_dir/$repo" || {
-                log_error "Failed to clone: $repo"
-                return 1
-            }
-        fi
-
+        clone_repository "$target_dir" "$org" "$repo" || exit 1
         install_dependencies "$target_dir" "$repo" || exit 1
 
         log_debug "Finished setup for $repo"

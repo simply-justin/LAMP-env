@@ -10,6 +10,8 @@
 #
 # Usage:
 #   source "${SCRIPT_DIR}/helpers/include.sh"
+#
+# This script sources logs.sh and utils.sh for logging and utility functions.
 #==============================================================================
 
 set -euo pipefail

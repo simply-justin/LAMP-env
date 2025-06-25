@@ -16,10 +16,10 @@ IFS=$'\n\t'
 # Command and Path
 #==============================================================================
 
-# Check if a command exists in the system PATH
-# @param $1 Command name to check
-# @return 0 if command exists, 1 otherwise
-command_exists() {
+# Check if a package exists in the system PATH
+# @param $1 package name to check
+# @return 0 if package exists, 1 otherwise
+package_exists() {
     if command -v "$1" &>/dev/null || dpkg -l | grep -q "^ii  $1 "; then
         log_debug "Package already installed: $1"
         return 0
@@ -28,23 +28,26 @@ command_exists() {
     return 1
 }
 
-# Ensure a command is installed on the system
+# Ensure a package is installed on the system
 # @param $1 Package name to install
 # @return 0 on success, 1 on failure
-require_command() {
+require_package() {
     local package="$1"
 
-    if command_exists "$package"; then
-        log_debug "Package already installed: $package"
-        return 0
-    fi
+    # Check if the package already exists
+    package_exists "$package" || return 0
 
     # If not found, install it
+    log_info "Installing $package"
     sudo apt-get install -y "$package" || {
         log_error "Failed to install package: $package"
         return 1
     }
 }
+
+#==============================================================================
+# Directory
+#==============================================================================
 
 # Check if a directory exists and is accessible
 # @param $1 Directory path to check
@@ -52,17 +55,6 @@ require_command() {
 directory_exists() {
     [ -d "$1" ]
 }
-
-# Check if a file exists and is accessible
-# @param $1 File path to check
-# @return 0 if file exists, 1 otherwise
-file_exists() {
-    [ -f "$1" ]
-}
-
-#==============================================================================
-# Directory
-#==============================================================================
 
 # Create a directory if it doesn't exist
 # @param $1 Directory path to create
@@ -84,6 +76,13 @@ ensure_directory() {
 #==============================================================================
 # File
 #==============================================================================
+
+# Check if a file exists and is accessible
+# @param $1 File path to check
+# @return 0 if file exists, 1 otherwise
+file_exists() {
+    [ -f "$1" ]
+}
 
 # Create a backup of a file with timestamp
 # @param $1 File path to backup
@@ -118,34 +117,6 @@ backup_file() {
 #==============================================================================
 # Github Repository
 #==============================================================================
-
-# Clone a repository
-# @param $1 Target directory
-# @param $2 Organization name
-# @param $3 Repository name
-# @return 0 on success, 1 on failure
-clone_repository() {
-    local target_dir="$1"
-    local org="$2"
-    local repo="$3"
-
-    if ! directory_exists "$target_dir/$repo"; then
-        # Construct repository URL with optional authentication
-        local repo_url="https://github.com/${org}/${repo}.git"
-        if [ -n "${GITHUB_TOKEN:-}" ]; then
-            repo_url="https://${GITHUB_TOKEN}@github.com/${org}/${repo}.git"
-            log_debug "Using authenticated GitHub URL"
-        fi
-
-        log_info "Cloning: $repo"
-        git clone "$repo_url" "$target_dir/$repo" || {
-            log_error "Failed to clone: $repo"
-            return 1
-        }
-    fi
-
-    return 0
-}
 
 # Install dependencies for a repository
 # @param $1 Target directory

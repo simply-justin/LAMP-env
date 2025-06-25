@@ -9,6 +9,11 @@
 # - PM2 process manager setup
 # - MariaDB database setup
 # - Redis cache configuration
+#
+# Assumptions:
+#   - Apache2, MariaDB, and Redis are available for installation
+#   - Vhost files are provided in $CONFIG_DIR/vhosts/*.conf
+#   - Sudo privileges are available
 #==============================================================================
 
 set -euo pipefail
@@ -51,9 +56,6 @@ fi
 for php_version in "${PHP_VERSIONS[@]}"; do
     php_version="php${php_version}"
 
-    log_info "Installing PHP-FPM for $php_version"
-    require_command "$php_version-fpm" || exit 1
-
     # Check if the service is enabled and running
     if ! systemctl is-enabled "$php_version-fpm" &>/dev/null; then
         log_debug "Enabling $php_version-fpm service"
@@ -75,9 +77,6 @@ done
 #------------------------------------------------------------------------------
 # Apache2 Configuration
 #------------------------------------------------------------------------------
-log_info "Installing Apache2"
-require_command apache2 || exit 1
-
 # List of required Apache modules
 apache_modules=(
     "proxy"             # Proxy module for reverse proxy
@@ -126,6 +125,7 @@ for php_version in "${PHP_VERSIONS[@]}"; do
 done
 
 # Remove default configurations
+# Remove default Apache vhost and web root to avoid conflicts
 if file_exists "${APACHE_VHOSTS}/000-default.conf"; then
     log_info "Removing default Apache configurations..."
 
@@ -147,6 +147,7 @@ if directory_exists "/var/www/html"; then
 fi
 
 # Configure ports
+# Ensure Apache listens on all interfaces (0.0.0.0:80)
 if ! grep -q "^Listen 0.0.0.0:80" "$APACHE_PORTS"; then
     log_debug "Backing up the current ports.conf"
     backup_file "$APACHE_PORTS" || exit 1
@@ -159,6 +160,7 @@ if ! grep -q "^Listen 0.0.0.0:80" "$APACHE_PORTS"; then
 fi
 
 # Configure virtual hosts
+# Copy and enable all vhost files from $CONFIG_DIR/vhosts
 VHOST_DIR="${CONFIG_DIR}/vhosts"
 if directory_exists "$VHOST_DIR"; then
     log_info "Processing vHost configurations"
@@ -167,6 +169,7 @@ if directory_exists "$VHOST_DIR"; then
         vhost_name="$(basename "$vhost_file")"
         dest="${APACHE_VHOSTS}/${vhost_name}"
 
+        # Overwrite existing vhost config if present
         file_exists "$dest" && log_info "Updating $vhost_name because it already exists"
 
         log_debug "Removing existing configuration ($dest)"
@@ -216,12 +219,6 @@ fi
 #------------------------------------------------------------------------------
 # MariaDB Configuration
 #------------------------------------------------------------------------------
-log_info "Installing MariaDB"
-if ! require_command mariadb-server; then
-    log_error "Failed to install MariaDB"
-    exit 1
-fi
-
 log_info "Starting MariaDB service"
 if ! sudo systemctl enable mariadb && sudo systemctl start mariadb; then
     log_error "Failed to start MariaDB service"
@@ -229,6 +226,7 @@ if ! sudo systemctl enable mariadb && sudo systemctl start mariadb; then
 fi
 
 # Run equivalent of mysql_secure_installation
+# Set root password and remove anonymous users
 log_debug "Configuring MariaDB"
 
 # Optional: Set a root password (leave empty to skip)
@@ -268,24 +266,6 @@ fi
 #------------------------------------------------------------------------------
 # Redis Configuration
 #------------------------------------------------------------------------------
-
-# Add Redis repository
-if ! file_exists "/usr/share/keyrings/redis-archive-keyring.gpg"; then
-    log_debug "Retrieving the redis keyring for signing"
-    if ! curl -fsSL https://packages.redis.io/gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg; then
-        log_error "Failed to add Redis GPG key"
-        exit 1
-    fi
-fi
-
-if ! echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | \
-    sudo tee /etc/apt/sources.list.d/redis.list > /dev/null; then
-    log_error "Failed to add Redis repository"
-    exit 1
-fi
-
-log_info "Installing Redis"
-require_command redis || exit 1
 
 log_info "Starting Redis service"
 if ! sudo systemctl enable redis-server && sudo systemctl start redis-server; then

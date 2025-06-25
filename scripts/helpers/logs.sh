@@ -10,6 +10,12 @@
 # - Command execution logging
 # - Progress tracking
 # - Section headers with progress bars
+#
+# Log Level System:
+#   LOG_LEVEL=0 (DEBUG): Most verbose, for troubleshooting
+#   LOG_LEVEL=1 (INFO): Standard informational output
+#   LOG_LEVEL=2 (WARN): Warnings only
+#   LOG_LEVEL=3 (ERROR): Errors only
 #==============================================================================
 
 set -euo pipefail
