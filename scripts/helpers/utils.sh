@@ -20,7 +20,12 @@ IFS=$'\n\t'
 # @param $1 Command name to check
 # @return 0 if command exists, 1 otherwise
 command_exists() {
-    command -v "$1" &>/dev/null
+    if command -v "$1" &>/dev/null || dpkg -l | grep -q "^ii  $1 "; then
+        log_debug "Package already installed: $1"
+        return 0
+    fi
+
+    return 1
 }
 
 # Ensure a command is installed on the system
@@ -29,14 +34,7 @@ command_exists() {
 require_command() {
     local package="$1"
 
-    # First, check if the command is in PATH
     if command_exists "$package"; then
-        log_debug "Package already installed: $package"
-        return 0
-    fi
-
-    # If not, check if it's installed via dpkg (APT)
-    if dpkg -l | grep -q "^ii  $package "; then
         log_debug "Package already installed: $package"
         return 0
     fi
@@ -121,17 +119,17 @@ backup_file() {
 # Github Repository
 #==============================================================================
 
-# Clone a repository and install its dependencies
-# @param $1 Organization name
-# @param $2 Repository name
-# @param $3 Target directory
+# Clone a repository
+# @param $1 Target directory
+# @param $2 Organization name
+# @param $3 Repository name
 # @return 0 on success, 1 on failure
-clone_and_install() {
-    local org="$1"
-    local repo="$2"
-    local target_dir="$3"
+clone_repository() {
+    local target_dir="$1"
+    local org="$2"
+    local repo="$3"
 
-    if ! directory_exists "$target_dir/.git"; then
+    if ! directory_exists "$target_dir/$repo"; then
         # Construct repository URL with optional authentication
         local repo_url="https://github.com/${org}/${repo}.git"
         if [ -n "${GITHUB_TOKEN:-}" ]; then
@@ -140,33 +138,65 @@ clone_and_install() {
         fi
 
         log_info "Cloning: $repo"
-        git clone "$repo_url" "$target_dir" || {
+        git clone "$repo_url" "$target_dir/$repo" || {
             log_error "Failed to clone: $repo"
             return 1
         }
     fi
 
-    log_debug "Changing to the target directory: $target_dir"
-    cd "$target_dir" || {
-        log_error "Failed to change directory to: $target_dir"
+    return 0
+}
+
+# Install dependencies for a repository
+# @param $1 Target directory
+# @param $2 Repository name
+# @return 0 on success, 1 on failure
+install_dependencies() {
+    local target_dir="$1"
+    local repo="$2"
+
+    log_debug "Changing to the target directory: $target_dir/$repo"
+    cd "$target_dir/$repo" || {
+        log_error "Failed to change directory to: $target_dir/$repo"
         return 1
     }
 
-    # Install PHP dependencies if composer.json exists and composer.lock does not
-    if file_exists "composer.json" && ! file_exists "composer.lock"; then
+    # Install PHP dependencies if composer.json exists and vendor directory does not exist
+    if file_exists "composer.json" && ! directory_exists "vendor"; then
         log_info "Installing PHP dependencies for $repo"
-        composer install --no-interaction || {
+        composer install --no-interaction --ignore-platform-reqs || {
             log_error "Failed to install PHP dependencies for $repo"
             return 1
         }
     fi
 
-    export CI=true
-    # Install Node.js dependencies if package.json exists and package-lock.json does not
-    if file_exists "package.json" && ! file_exists "package-lock.json"; then
-        log_info "Installing Node.js dependencies for $repo"
-        npm install --no-audit --no-fund --yes --loglevel=error || {
-            log_error "Failed to install Node.js dependencies for $repo"
+    # Check if Node.js dependencies are already installed
+    if directory_exists "node_modules"; then
+        log_info "Dependencies already installed for $repo"
+        return 0
+    fi
+
+    # Detect and install Node.js dependencies using the appropriate package manager
+    # Priority: pnpm > yarn > npm
+    if file_exists "pnpm-lock.yaml"; then
+        # Use pnpm if lockfile exists
+        log_info "Installing Node.js dependencies for $repo using pnpm"
+        pnpm install --frozen-lockfile || {
+            log_error "Failed to install Node.js dependencies for $repo with pnpm"
+            return 1
+        }
+    elif file_exists "yarn.lock"; then
+        # Use yarn if lockfile exists
+        log_info "Installing Node.js dependencies for $repo using yarn"
+        yarn install --frozen-lockfile || {
+            log_error "Failed to install Node.js dependencies for $repo with yarn"
+            return 1
+        }
+    elif file_exists "package.json"; then
+        # Default to npm if no pnpm or yarn lockfile is found
+        log_info "Installing Node.js dependencies for $repo using npm"
+        npm install --no-audit --no-fund || {
+            log_error "Failed to install Node.js dependencies for $repo with npm"
             return 1
         }
     fi

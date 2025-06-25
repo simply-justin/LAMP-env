@@ -18,9 +18,6 @@ IFS=$'\n\t'
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/helpers/include.sh"
 
-# Reconstruct PHP_VERSIONS array from string if present
-IFS=' ' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
-
 readonly APACHE_LOCATION="/etc/apache2"
 readonly APACHE_PORTS="${APACHE_LOCATION}/ports.conf"
 readonly APACHE_VHOSTS="${APACHE_LOCATION}/sites-available"
@@ -88,6 +85,7 @@ apache_modules=(
     "proxy_fcgi"        # FastCGI support
     "proxy_wstunnel"    # WebSocket proxy support
     "rewrite"           # URL rewriting
+    "headers"           # Headers module
     "setenvif"          # Set environment variables based on request
 )
 
@@ -233,20 +231,39 @@ fi
 # Run equivalent of mysql_secure_installation
 log_debug "Configuring MariaDB"
 
-sudo mysql -u root <<EOF
-    -- Remove anonymous users
-    DELETE FROM mysql.user WHERE User='';
+# Optional: Set a root password (leave empty to skip)
+readonly MARIADB_ROOT_PASSWORD="root"
 
-    -- Disallow remote root login
-    DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+log_debug "Checking MariaDB root access"
+if sudo mariadb -u root -e "SELECT 1;" >/dev/null 2>&1; then
+    log_info "Root login requires no password — performing initial secure setup."
 
-    -- Remove test database
-    DROP DATABASE IF EXISTS test;
-    DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
-
-    -- Reload privilege tables
-    FLUSH PRIVILEGES;
+    if [ -n "$MARIADB_ROOT_PASSWORD" ]; then
+sudo mariadb -u root <<EOF
+-- Set root password
+ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('${MARIADB_ROOT_PASSWORD}');
 EOF
+    fi
+
+    # Perform secure-hardening steps only during first-time setup
+sudo mariadb -u root <<EOF
+-- Remove anonymous users
+DELETE FROM mysql.user WHERE User='';
+
+-- Disallow remote root login
+DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+
+-- Remove test database
+DROP DATABASE IF EXISTS test;
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+
+-- Reload privilege tables
+FLUSH PRIVILEGES;
+EOF
+
+else
+    log_debug "MariaDB already secured. Skipping secure setup."
+fi
 
 #------------------------------------------------------------------------------
 # Redis Configuration

@@ -19,9 +19,6 @@ IFS=$'\n\t'
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/helpers/include.sh"
 
-# Reconstruct PHP_VERSIONS array from string if present
-IFS=' ' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
-
 #------------------------------------------------------------------------------
 # System Update
 #------------------------------------------------------------------------------
@@ -37,8 +34,20 @@ require_command ufw || exit 1
 #------------------------------------------------------------------------------
 # cURL + JQ Installation
 #------------------------------------------------------------------------------
+log_info "Installing ACL"
+require_command acl || exit 1
+
 log_info "Installing cURL"
 require_command curl || exit 1
+
+log_info "Installing GetText"
+require_command gettext || exit 1
+
+log_info "Installing GNUPG"
+require_command gnupg || exit 1
+
+log_info "Installing Apt-Transport-HTTPS"
+require_command apt-transport-https || exit 1
 
 log_info "Installing JQ"
 require_command jq || exit 1
@@ -67,6 +76,7 @@ else
     log_info "PHP repository is already configured"
 fi
 
+log_info "Installing PHP versions"
 for php_version in "${PHP_VERSIONS[@]}"; do
     # List of PHP packages to install
     php_packages=(
@@ -81,13 +91,14 @@ for php_version in "${PHP_VERSIONS[@]}"; do
         "php${php_version}-cli"       # Command line interface
         "php${php_version}-gd"        # GD graphics library
         "php${php_version}-intl"      # Internationalization
+        "php${php_version}-redis"     # Redis
         "unzip"                       # Unzip utility
     )
 
     # Install PHP packages
     log_info "Installing PHP ${php_version} and extensions"
     for package in "${php_packages[@]}"; do
-        log_debug "[PHP] installing extension: $package"
+        log_debug "[PHP] Installing extension: $package"
         require_command "$package" || exit 1
     done
 done
@@ -100,6 +111,11 @@ if ! command_exists composer; then
     if ! curl -sS https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer; then
         log_error "Failed to install Composer"
         exit 1
+    fi
+
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        log_info "Setting Composer GitHub token"
+        composer config --global github-oauth.github.com "$GITHUB_TOKEN"
     fi
 fi
 
@@ -117,26 +133,15 @@ if ! command_exists node; then
     # Install Node.js
     log_info "Installing Node.js"
     require_command nodejs || exit 1
-
-    # Verify installations
-    if ! command_exists node || ! command_exists npm; then
-        log_error "Node.js or npm installation failed"
-        exit 1
-    fi
 fi
 
 #------------------------------------------------------------------------------
-# Node.js Installation
+# PM2 Installation
 #------------------------------------------------------------------------------
 if ! command_exists pm2; then
     log_info "Installing PM2"
     if ! sudo npm install -g pm2; then
         log_error "Failed to install PM2"
-        exit 1
-    fi
-
-    if ! command_exists pm2; then
-        log_error "PM2 installation failed"
         exit 1
     fi
 fi

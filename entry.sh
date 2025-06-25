@@ -121,7 +121,8 @@ fi
 if [ ${#PHP_VERSIONS[@]} -eq 0 ]; then
     PHP_VERSIONS=(8.3)
 fi
-export PHP_VERSIONS_STR="${PHP_VERSIONS[*]}"
+
+export PHP_VERSIONS
 export GITHUB_TOKEN
 
 #-------------------------------------------------------#
