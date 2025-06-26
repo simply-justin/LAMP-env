@@ -23,7 +23,7 @@ readonly REPO_FILE="${CONFIG_DIR}/projects.json"
 #-------------------------------------------------------#
 # Configuration Validation
 #-------------------------------------------------------#
-log_section "Validating Project Configuration"
+log_info "Validating Project Configuration"
 
 # Single check for jq, config file, and valid JSON
 if ! package_exists jq || ! file_exists "$REPO_FILE" || ! jq empty "$REPO_FILE" 2>/dev/null; then
@@ -59,29 +59,31 @@ ensure_directory "${HOME}/projects" || exit 1
 # Process each repository in parallel for faster setup
 log_debug "Processing $repo_count repositories from configuration"
 
-# Use background subshells for parallel processing
+# Use background sub-shells for parallel processing
 declare -a processIds
 
 for i in $(seq 0 $((repo_count - 1))); do
     (
+        set -e  # Exit on any error in subshell
+
         org=$(jq -r ".[$i].org" "$REPO_FILE")
         repo=$(jq -r ".[$i].repo" "$REPO_FILE")
         target_dir=$(jq -r ".[$i].target_dir" "$REPO_FILE")
 
         # Exit process since its configuration is invalid
-        [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ] && exit 1
+        if [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ]; then
+            log_error "Invalid configuration for repository $i"
+            exit 1
+        fi
 
-        if ! directory_exists "$target_dir/$repo"; then
+        if ! directory_exists "${HOME}${target_dir}/${repo}"; then
             repo_url="https://${GITHUB_TOKEN}@github.com/${org}/${repo}.git"
 
             log_info "Cloning: $repo"
-            git clone "$repo_url" "$target_dir/$repo" || {
-                log_error "Failed to clone: $repo"
-                return 1
-            }
+            git clone "$repo_url" "${HOME}${target_dir}/${repo}" || exit 1
         fi
 
-        install_dependencies "$target_dir" "$repo" || exit 1
+        install_dependencies "${HOME}${target_dir}" "$repo" || exit 1
 
         log_debug "Finished setup for $repo"
     ) &
@@ -89,8 +91,12 @@ for i in $(seq 0 $((repo_count - 1))); do
 done
 
 # Wait for all parallel tasks to finish
-for pid in "${processIds[@]}"; do
-    wait "$pid" || log_error "One of the setup processes have failed"
+for i in "${!processIds[@]}"; do
+    pid="${processIds[$i]}"
+
+    if ! wait "$pid"; then
+        log_error "Repository setup process $i failed"
+    fi
 done
 
 log_debug "All project installation processes are complete"
@@ -128,16 +134,37 @@ for i in $(seq 0 $((repo_count - 1))); do
     fi
 
     # Change group ownership recursively
-    sudo chgrp -R devgroup $repo_path
+    sudo chgrp -R devgroup "$repo_path"
 
-    # Set safe, consistent permissions
-    sudo find "$repo_path" -type d -exec chmod 2770 {} \;
-    sudo find "$repo_path" -type f -exec chmod 660 {} \;
+    # Set secure, consistent permissions
+    # Directories: 2755 (rwxr-xr-x with SGID)
+    # Files: 644 (rw-r--r--)
+    log_debug "Setting secure permissions for $repo_path"
 
-    # Set default ACLs for all future files/dirs
-    sudo setfacl -d -m u::rwX "$repo_path"
-    sudo setfacl -d -m g::rwX "$repo_path"
-    sudo setfacl -d -m o::0 "$repo_path"
+    if ! sudo find "$repo_path" -type d -exec chmod 2755 {} \; 2>/dev/null; then
+        log_warn "Failed to set directory permissions for $repo"
+    fi
+
+    if ! sudo find "$repo_path" -type f -exec chmod 644 {} \; 2>/dev/null; then
+        log_warn "Failed to set file permissions for $repo"
+    fi
+
+
+    # Set default ACLs for future files/dirs (only if ACL is supported)
+    if command -v setfacl >/dev/null 2>&1; then
+        log_debug "Setting default ACLs for $repo_path"
+        if ! sudo setfacl -d -m u::rwX "$repo_path" 2>/dev/null; then
+            log_warn "Failed to set user ACL for $repo"
+        fi
+        if ! sudo setfacl -d -m g::rX "$repo_path" 2>/dev/null; then
+            log_warn "Failed to set group ACL for $repo"
+        fi
+        if ! sudo setfacl -d -m o::0 "$repo_path" 2>/dev/null; then
+            log_warn "Failed to set other ACL for $repo"
+        fi
+    else
+        log_debug "ACL not available, skipping ACL configuration"
+    fi
 
     log_info "Successfully configured project: $org/$repo"
 done

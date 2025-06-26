@@ -16,16 +16,23 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# Set HOME to the current working directory
 HOME="$(pwd)"
+readonly HOME
 
-export HOME
-export ENV_DIR="$HOME/LAMP-env"
-export SCRIPT_DIR="$HOME/LAMP-env/scripts"
-export CONFIG_DIR="$HOME/LAMP-env/configs"
+# Define environment directories
+ENV_DIR="$HOME/LAMP-env"
+SCRIPT_DIR="$ENV_DIR/scripts"
+CONFIG_DIR="$ENV_DIR/configs"
+MARIADB_ROOT_PASSWORD="root"
+readonly ENV_DIR SCRIPT_DIR CONFIG_DIR MARIADB_ROOT_PASSWORD
 
-export GITHUB_TOKEN=""
+# Only export variables that need to be available to child scripts
+export HOME ENV_DIR SCRIPT_DIR CONFIG_DIR MARIADB_ROOT_PASSWORD
 
-readonly HOME ENV_DIR SCRIPT_DIR CONFIG_DIR
+# Initialize variables that will be set later (do not export yet)
+GITHUB_TOKEN=""
+PACKAGE_MANAGER=""
 
 # Source helper functions
 # shellcheck source=/dev/null
@@ -36,27 +43,29 @@ source "$SCRIPT_DIR/helpers/include.sh"
 #-------------------------------------------------------#
 usage() {
 cat <<EOF
-    Usage: $0 [--exclude a,b] [--only x,y] [--php] [--debug] [githubToken]
+    Usage: $0 [--exclude a,b] [--only c,d] [--php e,f] [--package-manager g] [--debug] [githubToken]
 
     This script sets up your development environment by:
     1. Bootstrapping required dependencies
     2. Running environment setup scripts
     3. Configuring development tools
 
-    Positional:
+    Required:
         githubToken         Your Github token for repository access
 
     Options:
-        --exclude LIST      Comma-separated list of script names (without .sh) to skip
-        --only LIST         Comma-separated list of script names to run (mutually exclusive)
-        --php LIST          Comma-separated list of PHP versions to install
-        --debug             Enables debug logging
+        --exclude LIST              Comma-separated list of script names (without .sh) to skip
+        --only LIST                 Comma-separated list of script names to run (mutually exclusive)
+        --php LIST                  Comma-separated list of PHP versions to install
+        --package-manager STRING    The package manager to use. (Defaults to Node)
+        --debug                     Enables debug logging
 
     Examples:
         $0 your_github_token
         $0 your_github_token --exclude docker,node
         $0 your_github_token --only git,php
         $0 your_github_token --php 8.1,8.2
+        $0 your_github_token --package-manager pnpm
         $0 your_github_token --debug
 EOF
 exit 1
@@ -94,6 +103,11 @@ while (( $# )); do
                 PHP_VERSIONS+=("$version")
             done
             shift 2
+            ;;
+        --pm|--package-manager)
+            [[ -z "${2-}" ]] && echo "Error: --package-manager needs a value" >&2 && usage
+            PACKAGE_MANAGER="$2"
+            shift
             ;;
         --d|--debug)
             # Enable debug logging
@@ -137,8 +151,15 @@ if [ ${#PHP_VERSIONS[@]} -eq 0 ]; then
     PHP_VERSIONS=(8.3)
 fi
 
-export PHP_VERSIONS
+# After setting PHP_VERSIONS array
+export PHP_VERSIONS_STR="${PHP_VERSIONS[*]}"
+export PACKAGE_MANAGER
 export GITHUB_TOKEN
+
+# After parsing and assigning, export variables that need to be used by child scripts
+export GITHUB_TOKEN PACKAGE_MANAGER
+# Mark as readonly if you do not want them to change after this point
+readonly GITHUB_TOKEN PACKAGE_MANAGER
 
 #-------------------------------------------------------#
 # Execute environment setup scripts

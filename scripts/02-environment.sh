@@ -4,16 +4,11 @@
 # Environment Configuration Script
 #==============================================================================
 # This script sets up the development environment including:
-# - UFW firewall rules
 # - Apache web server configuration
 # - PM2 process manager setup
 # - MariaDB database setup
+# - RabbitMQ message broker setup
 # - Redis cache configuration
-#
-# Assumptions:
-#   - Apache2, MariaDB, and Redis are available for installation
-#   - Vhost files are provided in $CONFIG_DIR/vhosts/*.conf
-#   - Sudo privileges are available
 #==============================================================================
 
 set -euo pipefail
@@ -22,6 +17,9 @@ IFS=$'\n\t'
 # Load shared helpers
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/helpers/include.sh"
+
+# Reconstruct PHP_VERSIONS array from string if present
+IFS=' ' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
 
 readonly APACHE_LOCATION="/etc/apache2"
 readonly APACHE_PORTS="${APACHE_LOCATION}/ports.conf"
@@ -51,80 +49,8 @@ if ! sudo ufw status | grep -q "Status: active"; then
 fi
 
 #------------------------------------------------------------------------------
-# PHP-FPM Configuration
+# Apache2 + PHP-FPM Configuration
 #------------------------------------------------------------------------------
-for php_version in "${PHP_VERSIONS[@]}"; do
-    php_version="php${php_version}"
-
-    # Check if the service is enabled and running
-    if ! systemctl is-enabled "$php_version-fpm" &>/dev/null; then
-        log_debug "Enabling $php_version-fpm service"
-        if ! sudo systemctl enable "$php_version-fpm"; then
-            log_error "Failed to enable $php_version-fpm service"
-            exit 1
-        fi
-    fi
-
-    if ! systemctl is-active "$php_version-fpm" &>/dev/null; then
-        log_debug "Starting $php_version-fpm service"
-        if ! sudo systemctl start "$php_version-fpm"; then
-            log_error "Failed to start $php_version-fpm service"
-            exit 1
-        fi
-    fi
-done
-
-#------------------------------------------------------------------------------
-# Apache2 Configuration
-#------------------------------------------------------------------------------
-# List of required Apache modules
-apache_modules=(
-    "proxy"             # Proxy module for reverse proxy
-    "proxy_http"        # HTTP proxy support
-    "proxy_fcgi"        # FastCGI support
-    "proxy_wstunnel"    # WebSocket proxy support
-    "rewrite"           # URL rewriting
-    "headers"           # Headers module
-    "setenvif"          # Set environment variables based on request
-)
-
-log_info "Enabling Apache2 modules"
-for module in "${apache_modules[@]}"; do
-    if ! apache2ctl -M | grep -q "$module"; then
-        log_debug "Enabling $module"
-        if ! sudo a2enmod "$module"; then
-            log_warn "Could not enable module $module"
-        fi
-    else
-        log_debug "Module $module is already enabled"
-    fi
-done
-
-# Handle php versions
-for php_version in "${PHP_VERSIONS[@]}"; do
-    # Handle disabling the default apache php modules
-    php_version="php${php_version}"
-    if apache2ctl -M | grep -q "$php_version"; then
-        log_debug "Disabling $php_version"
-        if ! sudo a2dismod "$php_version"; then
-            log_warn "Could not disable module $php_version"
-        fi
-    else
-        log_debug "Module $php_version is already disabled"
-    fi
-
-    # Enable the PHP-FPM configs
-    if [ ! -e "/etc/apache2/conf-enabled/${php_version}-fpm.conf" ]; then
-        log_debug "Enabling PHP-FPM config for $php_version"
-        if ! sudo a2enconf "$php_version-fpm"; then
-            log_warn "Could not enable PHP-FPM config for $php_version"
-        fi
-    else
-        log_debug "PHP-FPM config for $php_version is already enabled"
-    fi
-done
-
-# Remove default configurations
 # Remove default Apache vhost and web root to avoid conflicts
 if file_exists "${APACHE_VHOSTS}/000-default.conf"; then
     log_info "Removing default Apache configurations..."
@@ -159,6 +85,57 @@ if ! grep -q "^Listen 0.0.0.0:80" "$APACHE_PORTS"; then
     fi
 fi
 
+# List of required Apache modules
+apache_modules=(
+    "proxy"             # Proxy module for reverse proxy
+    "proxy_http"        # HTTP proxy support
+    "proxy_fcgi"        # FastCGI support
+    "proxy_wstunnel"    # WebSocket proxy support
+    "rewrite"           # URL rewriting
+    "headers"           # Headers module
+    "setenvif"          # Set environment variables based on request
+)
+
+log_info "Enabling Apache2 modules"
+for module in "${apache_modules[@]}"; do
+    if ! apache2ctl -M | grep -q "$module"; then
+        log_debug "Enabling $module"
+        if ! sudo a2enmod "$module"; then
+            log_warn "Could not enable module $module"
+        fi
+    else
+        log_debug "Module $module is already enabled"
+    fi
+done
+
+# Handle php versions
+for php_version in "${PHP_VERSIONS[@]}"; do
+    php_version="php${php_version}"
+
+    # Disable default apache php module
+    if apache2ctl -M | grep -q "$php_version"; then
+        log_debug "Disabling $php_version"
+        if ! sudo a2dismod "$php_version"; then
+            log_warn "Could not disable module $php_version"
+        fi
+    else
+        log_debug "Module $php_version is already disabled"
+    fi
+
+    # Enable the PHP-FPM config
+    if [ ! -e "/etc/apache2/conf-enabled/${php_version}-fpm.conf" ]; then
+        log_debug "Enabling PHP-FPM config for $php_version"
+        if ! sudo a2enconf "$php_version-fpm"; then
+            log_warn "Could not enable PHP-FPM config for $php_version"
+        fi
+    else
+        log_debug "PHP-FPM config for $php_version is already enabled"
+    fi
+
+    # Enable and start the PHP-FPM service
+    enable_service "$php_version-fpm"
+done
+
 # Configure virtual hosts
 # Copy and enable all vhost files from $CONFIG_DIR/vhosts
 VHOST_DIR="${CONFIG_DIR}/vhosts"
@@ -170,7 +147,9 @@ if directory_exists "$VHOST_DIR"; then
         dest="${APACHE_VHOSTS}/${vhost_name}"
 
         # Overwrite existing vhost config if present
-        file_exists "$dest" && log_info "Updating $vhost_name because it already exists"
+        if file_exists "$dest"; then
+            log_info "Updating $vhost_name because it already exists"
+        fi
 
         log_debug "Removing existing configuration ($dest)"
         sudo rm -f "$dest" 2>/dev/null
@@ -220,41 +199,26 @@ fi
 # MariaDB Configuration
 #------------------------------------------------------------------------------
 log_info "Starting MariaDB service"
-if ! sudo systemctl enable mariadb && sudo systemctl start mariadb; then
-    log_error "Failed to start MariaDB service"
-    exit 1
-fi
+enable_service "mariadb"
 
 # Run equivalent of mysql_secure_installation
 # Set root password and remove anonymous users
 log_debug "Configuring MariaDB"
 
-# Optional: Set a root password (leave empty to skip)
-readonly MARIADB_ROOT_PASSWORD="root"
-
 log_debug "Checking MariaDB root access"
 if sudo mariadb -u root -e "SELECT 1;" >/dev/null 2>&1; then
     log_info "Root login requires no password — performing initial secure setup."
 
-    if [ -n "$MARIADB_ROOT_PASSWORD" ]; then
-sudo mariadb -u root <<EOF
+    sudo mariadb -u root <<EOF
 -- Set root password
-ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('${MARIADB_ROOT_PASSWORD}');
-EOF
-    fi
-
-    # Perform secure-hardening steps only during first-time setup
-sudo mariadb -u root <<EOF
+$( [ -n "$MARIADB_ROOT_PASSWORD" ] && echo "ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('${MARIADB_ROOT_PASSWORD}');" )
 -- Remove anonymous users
 DELETE FROM mysql.user WHERE User='';
-
 -- Disallow remote root login
 DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
-
 -- Remove test database
 DROP DATABASE IF EXISTS test;
 DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
-
 -- Reload privilege tables
 FLUSH PRIVILEGES;
 EOF
@@ -268,38 +232,4 @@ fi
 #------------------------------------------------------------------------------
 
 log_info "Starting Redis service"
-if ! sudo systemctl enable redis-server && sudo systemctl start redis-server; then
-    log_error "Failed to start Redis service"
-    exit 1
-fi
-
-# Install Redis Commander (web-based GUI)
-if ! command -v redis-commander &>/dev/null; then
-    log_info "Installing Redis Commander"
-
-    if ! sudo npm install -g redis-commander; then
-        log_warn "Failed to install Redis Commander"
-    else
-        # Create systemd service for Redis Commander
-sudo tee /etc/systemd/system/redis-commander.service > /dev/null <<EOF
-    [Unit]
-    Description=Redis Commander
-    After=network.target
-
-    [Service]
-    ExecStart=/usr/bin/redis-commander --redis-host=localhost --redis-port=6379
-    Restart=always
-    User=root
-    Environment=NODE_ENV=production
-
-    [Install]
-    WantedBy=multi-user.target
-EOF
-        sudo systemctl daemon-reload
-        sudo systemctl enable redis-commander
-        sudo systemctl start redis-commander
-        log_debug "Redis Commander installed and running"
-    fi
-else
-    log_debug "Redis Commander is already installed"
-fi
+enable_service "redis-server"

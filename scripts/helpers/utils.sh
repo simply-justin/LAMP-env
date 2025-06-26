@@ -35,14 +35,16 @@ require_package() {
     local package="$1"
 
     # Check if the package already exists
-    package_exists "$package" || return 0
+    if ! package_exists "$package"; then
+        # If not found, install it
+        log_info "Installing $package"
+        sudo apt-get install -y "$package" || {
+            log_error "Failed to install package: $package"
+            return 1
+        }
+    fi
 
-    # If not found, install it
-    log_info "Installing $package"
-    sudo apt-get install -y "$package" || {
-        log_error "Failed to install package: $package"
-        return 1
-    }
+    return 0
 }
 
 #==============================================================================
@@ -115,8 +117,23 @@ backup_file() {
 }
 
 #==============================================================================
-# Github Repository
+# Actions
 #==============================================================================
+
+# Enable and start a service
+# @param $1 Service name
+# @return 0 on success, 1 on failure
+enable_service() {
+    local service="$1"
+    if ! sudo systemctl is-enabled "$service" &>/dev/null; then
+        log_debug "Enabling $service"
+        sudo systemctl enable "$service" || { log_error "Failed to enable $service"; exit 1; }
+    fi
+    if ! sudo systemctl is-active "$service" &>/dev/null; then
+        log_debug "Starting $service"
+        sudo systemctl start "$service" || { log_error "Failed to start $service"; exit 1; }
+    fi
+}
 
 # Install dependencies for a repository
 # @param $1 Target directory
@@ -168,6 +185,14 @@ install_dependencies() {
         log_info "Installing Node.js dependencies for $repo using npm"
         npm install --no-audit --no-fund || {
             log_error "Failed to install Node.js dependencies for $repo with npm"
+            return 1
+        }
+    fi
+
+    if file_exists ".env.example" && ! file_exists ".env"; then
+        log_info "Creating .env file from .env.example"
+        cp ".env.example" ".env" || {
+            log_error "Failed to create .env file"
             return 1
         }
     fi

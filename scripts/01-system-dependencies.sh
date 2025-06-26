@@ -20,10 +20,12 @@ IFS=$'\n\t'
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/helpers/include.sh"
 
+# Reconstruct PHP_VERSIONS array from string if present
+IFS=' ' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
+
 #------------------------------------------------------------------------------
 # System Update
 #------------------------------------------------------------------------------
-# Update and upgrade system packages to ensure latest security and features
 log_info "Updating system packages"
 sudo apt-get update -y && sudo apt-get upgrade -y
 
@@ -31,17 +33,15 @@ sudo apt-get update -y && sudo apt-get upgrade -y
 # Dependency Installation
 #------------------------------------------------------------------------------
 dependencies=(
-    acl                             # Advanced file permissions
-    ufw                             # Firewall
-    curl                            # Download utility
-    gettext                         # Internationalization
-    gnupg                           # Secure package signing
-    apt-transport-https             # HTTPS transport for APT
-    jq                              # JSON parsing
-    apache2                         # Web server
-    mariadb-server                  # Database server
-    software-properties-common      # For add-apt-repository
-    unzip                           # Unzip utility
+    "acl"                             # Advanced file permissions
+    "ufw"                             # Firewall
+    "curl"                            # Download utility
+    "gettext"                         # Internationalization
+    "jq"                              # JSON parsing
+    "apache2"                         # Web server
+    "mariadb-server"                  # Database server
+    "software-properties-common"      # For add-apt-repository
+    "unzip"                           # Unzip utility
 )
 
 for dependency in "${dependencies[@]}"; do
@@ -74,20 +74,29 @@ for php_version in "${PHP_VERSIONS[@]}"; do
 
     # List of PHP packages to install
     php_packages=(
-        "${php_version}"            # Core PHP package
-        "${php_version}-mysql"      # MySQL support
-        "${php_version}-mbstring"   # Multibyte string support
-        "${php_version}-xml"        # XML support
-        "${php_version}-curl"       # cURL support
-        "${php_version}-bcmath"     # BCMath support
-        "${php_version}-zip"        # ZIP support
-        "${php_version}-common"     # Common PHP files
-        "${php_version}-cli"        # Command line interface
-        "${php_version}-gd"         # GD graphics library
-        "${php_version}-intl"       # Internationalization
-        "${php_version}-redis"      # Redis
-        "${php_version}-fpm"        # FPM
-        "unzip"                     # Unzip utility
+        "${php_version}"              # Core PHP package
+        "${php_version}-bcmath"       # BCMath support
+        "${php_version}-cli"          # Command line interface
+        "${php_version}-common"       # Common PHP files
+        "${php_version}-ctype"        # Character type checking
+        "${php_version}-curl"         # cURL support
+        "${php_version}-dom"          # DOM support
+        "${php_version}-fpm"          # FPM
+        "${php_version}-gd"           # GD graphics library
+        "${php_version}-hash"         # Hash support
+        "${php_version}-intl"         # Internationalization
+        "${php_version}-mbstring"     # Multi-byte string support
+        "${php_version}-mysql"        # MySQL support
+        "${php_version}-opcache"      # OPcache
+        "${php_version}-openssl"      # OpenSSL support
+        "${php_version}-pcre"         # PCRE support
+        "${php_version}-pdo"          # PDO support
+        "${php_version}-redis"        # Redis
+        "${php_version}-session"      # Session support
+        "${php_version}-tokenizer"    # Tokenizer
+        "${php_version}-xml"          # XML support
+        "${php_version}-zip"          # ZIP support
+        "unzip"                       # Unzip utility
     )
 
     # Install PHP packages
@@ -131,6 +140,17 @@ if ! package_exists node; then
 fi
 
 #------------------------------------------------------------------------------
+# Package Manager Installation
+#------------------------------------------------------------------------------
+if [ -n "$PACKAGE_MANAGER" ] && [ "$PACKAGE_MANAGER" != ' ' ] && ! package_exists "$PACKAGE_MANAGER"; then
+    log_info "Installing $PACKAGE_MANAGER"
+    if ! sudo npm install -g "$PACKAGE_MANAGER"; then
+        log_error "Failed to install $PACKAGE_MANAGER"
+        exit 1
+    fi
+fi
+
+#------------------------------------------------------------------------------
 # PM2 Installation
 #------------------------------------------------------------------------------
 # Install PM2 globally for Node.js process management
@@ -162,3 +182,34 @@ if ! echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https:/
 fi
 
 require_package redis || exit 1
+
+# Install Redis Commander (web-based GUI)
+if ! command -v redis-commander &>/dev/null; then
+    log_info "Installing Redis Commander"
+
+    if ! sudo npm install -g redis-commander; then
+        log_warn "Failed to install Redis Commander"
+    else
+        # Create systemd service for Redis Commander
+sudo tee /etc/systemd/system/redis-commander.service > /dev/null <<EOF
+    [Unit]
+    Description=Redis Commander
+    After=network.target
+
+    [Service]
+    ExecStart=/usr/bin/redis-commander --redis-host=localhost --redis-port=6379
+    Restart=always
+    User=root
+    Environment=NODE_ENV=production
+
+    [Install]
+    WantedBy=multi-user.target
+EOF
+        sudo systemctl daemon-reload
+        sudo systemctl enable redis-commander
+        sudo systemctl start redis-commander
+        log_debug "Redis Commander installed and running"
+    fi
+else
+    log_debug "Redis Commander is already installed"
+fi
