@@ -12,6 +12,6 @@
 //   ]
 module.exports = {
     apps: [
-      // PM2 process configurations
+        // PM2 process configurations
     ],
   };

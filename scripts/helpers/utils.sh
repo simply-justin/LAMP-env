@@ -47,6 +47,86 @@ require_package() {
     return 0
 }
 
+# Check if an APT repository is already configured in the system
+# Searches through /etc/apt/sources.list.d/ and /etc/apt/sources.list
+# @param $1 Repository identifier to search for (e.g., "ppa:ondrej/php")
+# @return 0 if repository exists, 1 otherwise
+apt_repo_exists() {
+    local repo="$1"
+    local sources_dir="/etc/apt/sources.list.d"
+
+    if [[ -z "$repo" ]]; then
+        log_error "Repository identifier cannot be empty"
+        return 1
+    fi
+
+
+    if [[ ! -d "$sources_dir" ]]; then
+        log_debug "APT sources.list.d directory does not exist"
+        return 1
+    fi
+
+    # Check in both .list and .sources files
+    if grep -rFq "$repo" "$sources_dir" 2>/dev/null; then
+        log_debug "APT repository found in sources.list.d: $repo"
+        return 0
+    fi
+
+    # Check main sources.list
+    if [[ -f "/etc/apt/sources.list" ]] && grep -Fq "$repo" /etc/apt/sources.list 2>/dev/null; then
+        log_debug "APT repository found in main sources.list: $repo"
+        return 0
+    fi
+
+    log_debug "APT repository not found: $repo"
+    return 1
+}
+
+
+# Add an APT repository to the system if it doesn't already exist
+# Handles both PPA and regular repository formats
+# @param $1 Repository (e.g., "ppa:ondrej/php" or "deb http://...")
+# @param $2 Optional: Force update even if repository exists (default: false)
+# @return 0 on success, 1 on failure
+add_apt_repo() {
+    local repo="$1"
+    local force_update="${2:-false}"
+
+    if [[ -z "$repo" ]]; then
+        log_error "Repository cannot be empty"
+        return 1
+    fi
+
+    if ! command -v add-apt-repository &>/dev/null; then
+        log_info "Installing add-apt-repository (via software-properties-common)"
+        sudo apt-get update -y && sudo apt-get install -y software-properties-common || {
+            log_error "Failed to install required tools"
+            return 1
+        }
+    fi
+
+    if [[ "$force_update" != "true" ]] && apt_repo_exists "$repo"; then
+        log_debug "APT repository already exists: $repo"
+        return 0
+    fi
+
+    log_info "Adding APT repository: $repo"
+    if sudo add-apt-repository -y "$repo"; then
+        log_debug "Repository added successfully, updating package lists"
+        if sudo apt-get update -y; then
+            log_info "Repository added and package lists updated"
+            return 0
+        else
+            log_warn "Repository added, but package list update failed"
+            return 1
+        fi
+    else
+        log_error "Failed to add APT repository: $repo"
+        return 1
+    fi
+}
+
+
 #==============================================================================
 # Directory
 #==============================================================================

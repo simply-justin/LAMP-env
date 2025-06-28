@@ -19,6 +19,8 @@ IFS=$'\n\t'
 source "${SCRIPT_DIR}/helpers/include.sh"
 
 readonly REPO_FILE="${CONFIG_DIR}/projects.json"
+readonly PROJECTS_DIR="${ROOT_DIR}/projects"
+readonly DEVGROUP="devgroup"
 
 #-------------------------------------------------------#
 # Configuration Validation
@@ -34,27 +36,23 @@ fi
 #-------------------------------------------------------#
 # Shared group Setup
 #-------------------------------------------------------#
-if ! getent group "devgroup" > /dev/null; then
-    log_info "Creating devgroup"
-    sudo groupadd devgroup
+if ! getent group "$DEVGROUP" > /dev/null; then
+    log_info "Creating $DEVGROUP"
+    sudo groupadd "$DEVGROUP"
 fi
 
-# Ensure Apache (www-data) is part of devgroup
-sudo usermod -aG devgroup www-data
-sudo usermod -aG devgroup $USER
+sudo usermod -aG "$DEVGROUP" www-data
+sudo usermod -aG "$DEVGROUP" "$USER"
 
 #-------------------------------------------------------#
 # Project Setup
 #-------------------------------------------------------#
 # Count repositories in configuration
 repo_count=$(jq '. | length' "$REPO_FILE")
-if [ "$repo_count" -eq 0 ]; then
-    log_warn "No repositories configured in $REPO_FILE"
-    exit 0
-fi
+[ "$repo_count" -eq 0 ] && { log_warn "No repositories configured"; exit 0; }
 
 # Create development directory
-ensure_directory "${HOME}/projects" || exit 1
+ensure_directory "$PROJECTS_DIR" || exit 1
 
 # Process each repository in parallel for faster setup
 log_debug "Processing $repo_count repositories from configuration"
@@ -71,39 +69,39 @@ for i in $(seq 0 $((repo_count - 1))); do
         target_dir=$(jq -r ".[$i].target_dir" "$REPO_FILE")
 
         # Exit process since its configuration is invalid
-        if [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ]; then
-            log_error "Invalid configuration for repository $i"
-            exit 1
-        fi
+        [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ] && { log_error "Invalid configuration for repository $i"; exit 1; }
 
-        if ! directory_exists "${HOME}${target_dir}/${repo}"; then
-            repo_url="https://${GITHUB_TOKEN}@github.com/${org}/${repo}.git"
-
+        full_repo_path="${ROOT_DIR}${target_dir}/${repo}"
+        repo_url="https://${GITHUB_TOKEN}@github.com/${org}/${repo}.git"
+        if ! directory_exists "$full_repo_path"; then
             log_info "Cloning: $repo"
-            git clone "$repo_url" "${HOME}${target_dir}/${repo}" || exit 1
+            git clone "$repo_url" "$full_repo_path" || exit 1
         fi
 
-        install_dependencies "${HOME}${target_dir}" "$repo" || exit 1
+        install_dependencies "${ROOT_DIR}${target_dir}" "$repo" || exit 1
 
         log_debug "Finished setup for $repo"
     ) &
     processIds+=($!)
+    sleep 0.1  # avoid overloading system
+    continue
 done
 
 # Wait for all parallel tasks to finish
-for i in "${!processIds[@]}"; do
-    pid="${processIds[$i]}"
-
-    if ! wait "$pid"; then
-        log_error "Repository setup process $i failed"
-    fi
+for pid in "${processIds[@]}"; do
+    wait "$pid" || log_error "One of the repository setups failed"
 done
 
-log_debug "All project installation processes are complete"
+#-------------------------------------------------------#
+# Symlink Creation and Permission Setup
+#-------------------------------------------------------#
+log_info "Setting symbolic links and permissions"
 
-# Now handle symlinks serially (as they often require sudo and global paths)
-# This ensures permissions and links are set up correctly
-log_info "Creating symbolic links and setting permissions"
+# Change group ownership recursively
+sudo chgrp "$DEVGROUP" "$ROOT_DIR"
+sudo chmod 2755 "$ROOT_DIR"
+sudo chgrp -R "$DEVGROUP" "$PROJECTS_DIR"
+
 for i in $(seq 0 $((repo_count - 1))); do
     org=$(jq -r ".[$i].org" "$REPO_FILE")
     repo=$(jq -r ".[$i].repo" "$REPO_FILE")
@@ -112,61 +110,40 @@ for i in $(seq 0 $((repo_count - 1))); do
     [ -z "$org" ] || [ -z "$repo" ] || [ -z "$target_dir" ] && continue
 
     # Full path to the repo directory
-    repo_path="${HOME}${target_dir}/${repo}"
+    repo_path="${ROOT_DIR}${target_dir}/${repo}"
     symlink_path="/var/www/$repo"
 
-    # Ensure the symlink target exists
-    if ! [ -d "$repo_path" ]; then
-        log_error "Symlink target does not exist: $repo_path"
-        continue
-    fi
+    [ -d "$repo_path" ] || { log_error "Missing path: $repo_path"; continue; }
 
-    # Remove existing symlink if present
-    if [ -L "$symlink_path" ]; then
-        log_debug "Remove existing symbolic link: $symlink_path"
-        sudo unlink "$symlink_path"
-    fi
+    [ -L "$symlink_path" ] && sudo unlink "$symlink_path"
+    sudo ln -s "$repo_path" "$symlink_path"
 
-    log_debug "Making a new symbolic link"
-    if ! sudo ln -s "$repo_path" "$symlink_path"; then
-        log_error "Failed to create symbolic link for $repo"
-        continue
-    fi
-
-    # Change group ownership recursively
-    sudo chgrp -R devgroup "$repo_path"
-
-    # Set secure, consistent permissions
-    # Directories: 2755 (rwxr-xr-x with SGID)
-    # Files: 644 (rw-r--r--)
     log_debug "Setting secure permissions for $repo_path"
 
-    if ! sudo find "$repo_path" -type d -exec chmod 2755 {} \; 2>/dev/null; then
-        log_warn "Failed to set directory permissions for $repo"
+    sudo chgrp -R "$DEVGROUP" "$repo_path"
+
+    writable_files=$(sudo find "$repo_path" -type f -perm /200)
+    writable_dirs=$(sudo find "$repo_path" -type d -perm /200)
+
+    sudo find "$repo_path" -type d -exec chmod 2755 {} \;
+    sudo find "$repo_path" -type f -exec chmod 644 {} \;
+    sudo find "$repo_path" -type f -perm /111 -exec chmod 755 {} \;
+
+    echo "$writable_files" | while read -r file; do
+        sudo chmod g+w "$file" 2>/dev/null || true
+    done
+
+    echo "$writable_dirs" | while read -r dir; do
+        sudo chmod g+w "$dir" 2>/dev/null || true
+    done
+
+    if command -v setfacl >/dev/null; then
+        sudo setfacl -d -m u::rwX "$repo_path"
+        sudo setfacl -d -m g::rX "$repo_path"
+        sudo setfacl -d -m o::0 "$repo_path"
     fi
 
-    if ! sudo find "$repo_path" -type f -exec chmod 644 {} \; 2>/dev/null; then
-        log_warn "Failed to set file permissions for $repo"
-    fi
-
-
-    # Set default ACLs for future files/dirs (only if ACL is supported)
-    if command -v setfacl >/dev/null 2>&1; then
-        log_debug "Setting default ACLs for $repo_path"
-        if ! sudo setfacl -d -m u::rwX "$repo_path" 2>/dev/null; then
-            log_warn "Failed to set user ACL for $repo"
-        fi
-        if ! sudo setfacl -d -m g::rX "$repo_path" 2>/dev/null; then
-            log_warn "Failed to set group ACL for $repo"
-        fi
-        if ! sudo setfacl -d -m o::0 "$repo_path" 2>/dev/null; then
-            log_warn "Failed to set other ACL for $repo"
-        fi
-    else
-        log_debug "ACL not available, skipping ACL configuration"
-    fi
-
-    log_info "Successfully configured project: $org/$repo"
+    log_info "Configured: $org/$repo"
 done
 
 # Restart Apache to apply changes

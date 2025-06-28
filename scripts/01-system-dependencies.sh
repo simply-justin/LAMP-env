@@ -53,47 +53,25 @@ done
 #------------------------------------------------------------------------------
 # Add PHP repository and install required PHP versions and extensions
 log_info "Setting up PHP repository..."
-
-# Add PHP repository
-if ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.list; then
-    if ! sudo add-apt-repository -y ppa:ondrej/php; then
-        log_error "Failed to add PHP repository"
-        exit 1
-    fi
-
-    if ! sudo apt-get update -y; then
-        log_error "Failed to update package lists"
-        exit 1
-    fi
-else
-    log_info "PHP repository is already configured"
-fi
+add_apt_repo "ppa:ondrej/php"
 
 for php_version in "${PHP_VERSIONS[@]}"; do
     php_version="php${php_version}"
 
     # List of PHP packages to install
-    php_packages=(
+    php_extensions=(
         "${php_version}"              # Core PHP package
         "${php_version}-bcmath"       # BCMath support
         "${php_version}-cli"          # Command line interface
         "${php_version}-common"       # Common PHP files
-        "${php_version}-ctype"        # Character type checking
         "${php_version}-curl"         # cURL support
-        "${php_version}-dom"          # DOM support
         "${php_version}-fpm"          # FPM
         "${php_version}-gd"           # GD graphics library
-        "${php_version}-hash"         # Hash support
         "${php_version}-intl"         # Internationalization
         "${php_version}-mbstring"     # Multi-byte string support
         "${php_version}-mysql"        # MySQL support
         "${php_version}-opcache"      # OPcache
-        "${php_version}-openssl"      # OpenSSL support
-        "${php_version}-pcre"         # PCRE support
-        "${php_version}-pdo"          # PDO support
         "${php_version}-redis"        # Redis
-        "${php_version}-session"      # Session support
-        "${php_version}-tokenizer"    # Tokenizer
         "${php_version}-xml"          # XML support
         "${php_version}-zip"          # ZIP support
         "unzip"                       # Unzip utility
@@ -101,7 +79,7 @@ for php_version in "${PHP_VERSIONS[@]}"; do
 
     # Install PHP packages
     log_info "Installing PHP ${php_version} and extensions"
-    for package in "${php_packages[@]}"; do
+    for package in "${php_extensions[@]}"; do
         require_package "$package" || exit 1
     done
 done
