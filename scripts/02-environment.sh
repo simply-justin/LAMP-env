@@ -91,10 +91,10 @@ done
 # Configure PHP-FPM
 for version in "${PHP_VERSIONS[@]}"; do
     php_module="php${version}"
-    apache2ctl -M | grep -q "$php_module" && sudo a2dismod "$php_module" || log_debug "$php_module already disabled"
+    apache2ctl -M | grep -q "$php_module" && sudo a2dismod "$php_module"
 
     conf_path="/etc/apache2/conf-enabled/${php_module}-fpm.conf"
-    [ ! -e "$conf_path" ] && sudo a2enconf "${php_module}-fpm" || log_debug "$php_module-fpm config already enabled"
+    [ ! -e "$conf_path" ] && sudo a2enconf "${php_module}-fpm"
 
     enable_service "${php_module}-fpm"
 done

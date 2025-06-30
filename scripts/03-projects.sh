@@ -20,7 +20,7 @@ source "${SCRIPT_DIR}/helpers/include.sh"
 
 readonly REPO_FILE="${CONFIG_DIR}/projects.json"
 readonly PROJECTS_DIR="${ROOT_DIR}/projects"
-readonly DEVGROUP="devgroup"
+readonly DEVGROUP="www-data"
 
 #-------------------------------------------------------#
 # Configuration Validation
@@ -32,17 +32,6 @@ if ! package_exists jq || ! file_exists "$REPO_FILE" || ! jq empty "$REPO_FILE" 
     log_error "JQ is required, or the repository configuration file is missing/invalid. Please check your setup."
     exit 1
 fi
-
-#-------------------------------------------------------#
-# Shared group Setup
-#-------------------------------------------------------#
-if ! getent group "$DEVGROUP" > /dev/null; then
-    log_info "Creating $DEVGROUP"
-    sudo groupadd "$DEVGROUP"
-fi
-
-sudo usermod -aG "$DEVGROUP" www-data
-sudo usermod -aG "$DEVGROUP" "$USER"
 
 #-------------------------------------------------------#
 # Project Setup
@@ -62,7 +51,7 @@ declare -a processIds
 
 for i in $(seq 0 $((repo_count - 1))); do
     (
-        set -e  # Exit on any error in subshell
+        set -e  # Exit on any error in sub-shell
 
         org=$(jq -r ".[$i].org" "$REPO_FILE")
         repo=$(jq -r ".[$i].repo" "$REPO_FILE")
@@ -99,7 +88,6 @@ log_info "Setting symbolic links and permissions"
 
 # Change group ownership recursively
 sudo chgrp "$DEVGROUP" "$ROOT_DIR"
-sudo chmod 2755 "$ROOT_DIR"
 sudo chgrp -R "$DEVGROUP" "$PROJECTS_DIR"
 
 for i in $(seq 0 $((repo_count - 1))); do
@@ -116,31 +104,34 @@ for i in $(seq 0 $((repo_count - 1))); do
     [ -d "$repo_path" ] || { log_error "Missing path: $repo_path"; continue; }
 
     [ -L "$symlink_path" ] && sudo unlink "$symlink_path"
+
+    log_debug "Creating symlink $repo_path -> $symlink_path"
     sudo ln -s "$repo_path" "$symlink_path"
 
     log_debug "Setting secure permissions for $repo_path"
-
     sudo chgrp -R "$DEVGROUP" "$repo_path"
 
-    writable_files=$(sudo find "$repo_path" -type f -perm /200)
-    writable_dirs=$(sudo find "$repo_path" -type d -perm /200)
+    # Known writable runtime paths
+    writable_paths=(
+        "$repo_path/storage"
+        "$repo_path/bootstrap/cache"
+        "$repo_path/public"
+        "$repo_path/.next"
+        "$repo_path/vendor/bin"
+        "$repo_path/public"
+    )
 
-    sudo find "$repo_path" -type d -exec chmod 2755 {} \;
-    sudo find "$repo_path" -type f -exec chmod 644 {} \;
-    sudo find "$repo_path" -type f -perm /111 -exec chmod 755 {} \;
-
-    echo "$writable_files" | while read -r file; do
-        sudo chmod g+w "$file" 2>/dev/null || true
+    for path in "${writable_paths[@]}"; do
+        [ -e "$path" ] || continue
+        sudo find "$path" -type d -exec chmod 2775 {} \;
+        sudo find "$path" -type f -exec chmod 664 {} \;
+        log_debug "Adjusted writable permissions for $path"
     done
 
-    echo "$writable_dirs" | while read -r dir; do
-        sudo chmod g+w "$dir" 2>/dev/null || true
-    done
-
+    # Set ACLs for the group
     if command -v setfacl >/dev/null; then
-        sudo setfacl -d -m u::rwX "$repo_path"
-        sudo setfacl -d -m g::rX "$repo_path"
-        sudo setfacl -d -m o::0 "$repo_path"
+        sudo setfacl -R -m d:u::rwX,d:g::rwX,d:o::--- "$repo_path"
+        sudo setfacl -R -m u::rwX,g::rwX,o::--- "$repo_path"
     fi
 
     log_info "Configured: $org/$repo"

@@ -74,7 +74,6 @@ for php_version in "${PHP_VERSIONS[@]}"; do
         "${php_version}-redis"        # Redis
         "${php_version}-xml"          # XML support
         "${php_version}-zip"          # ZIP support
-        "unzip"                       # Unzip utility
     )
 
     # Install PHP packages
