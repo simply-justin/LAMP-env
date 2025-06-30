@@ -46,7 +46,6 @@ fi
 #------------------------------------------------------------------------------
 # Apache2 + PHP-FPM Configuration
 #------------------------------------------------------------------------------
-
 # Remove default Apache configurations
 if file_exists "${APACHE_VHOSTS}/000-default.conf"; then
     log_debug "Disabling site: 000-default"
@@ -175,90 +174,11 @@ fi
 #------------------------------------------------------------------------------
 # RabbitMQ Configuration
 #------------------------------------------------------------------------------
-
-log_info "Configuring RabbitMQ"
-
-# Check if RabbitMQ is already installed
-if dpkg -l | grep -q rabbitmq-server; then
-    log_info "RabbitMQ is already installed. Skipping installation."
-else
-    # Add signing keys if not present
-    if [ ! -f /usr/share/keyrings/com.rabbitmq.team.gpg ]; then
-        log_debug "Adding RabbitMQ Team signing key"
-        if ! curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null; then
-            log_error "Failed to add RabbitMQ Team signing key"
-            exit 1
-        fi
-    fi
-    if [ ! -f /usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg ]; then
-        log_debug "Adding Erlang signing key"
-        if ! curl -1sLf https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg > /dev/null; then
-            log_error "Failed to add Erlang signing key"
-            exit 1
-        fi
-    fi
-    if [ ! -f /usr/share/keyrings/rabbitmq.9F4587F226208342.gpg ]; then
-        log_debug "Adding RabbitMQ server signing key"
-        if ! curl -1sLf https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/rabbitmq.9F4587F226208342.gpg > /dev/null; then
-            log_error "Failed to add RabbitMQ server signing key"
-            exit 1
-        fi
-    fi
-
-    # Add sources list if not present
-    if [ ! -f /etc/apt/sources.list.d/rabbitmq.list ]; then
-        log_debug "Adding RabbitMQ and Erlang repositories"
-        if ! sudo tee /etc/apt/sources.list.d/rabbitmq.list > /dev/null <<EOF
-## Provides modern Erlang/OTP releases
-##
-deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu jammy main
-deb-src [signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu jammy main
-
-# another mirror for redundancy
-deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu jammy main
-deb-src [signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu jammy main
-
-## Provides RabbitMQ
-##
-deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu jammy main
-deb-src [signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu jammy main
-
-# another mirror for redundancy
-deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu jammy main
-deb-src [signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu jammy main
-EOF
-        then
-            log_error "Failed to add RabbitMQ sources list"
-            exit 1
-        fi
-    fi
-
-    log_info "Updating apt repositories"
-    if ! sudo apt-get update -y; then
-        log_error "Failed to update apt repositories"
-        exit 1
-    fi
-
-    log_info "Installing Erlang dependencies"
-    if ! sudo apt-get install -y erlang-base \
-        erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
-        erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key \
-        erlang-runtime-tools erlang-snmp erlang-ssl \
-        erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl; then
-        log_error "Failed to install Erlang dependencies"
-        exit 1
-    fi
-
-    log_info "Installing RabbitMQ server"
-    require_package rabbitmq-server
-
-    log_info "Starting RabbitMQ service"
-    enable_service rabbitmq-server
-fi
+log_info "Starting RabbitMQ service"
+enable_service rabbitmq-server
 
 #------------------------------------------------------------------------------
 # Redis Configuration
 #------------------------------------------------------------------------------
-
 log_info "Starting Redis service"
 enable_service "redis-server"
