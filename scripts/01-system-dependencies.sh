@@ -36,7 +36,6 @@ dependencies=(
     "acl"                             # Advanced file permissions
     "ufw"                             # Firewall
     "curl"                            # Download utility
-    "gettext"                         # Internationalization
     "jq"                              # JSON parsing
     "apache2"                         # Web server
     "mariadb-server"                  # Database server

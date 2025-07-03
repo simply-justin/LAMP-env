@@ -44,6 +44,14 @@ if ! sudo ufw status | grep -q "Status: active"; then
 fi
 
 #------------------------------------------------------------------------------
+# GIT Configuration
+#------------------------------------------------------------------------------
+log_info "Configuring GIT"
+
+git config --global core.autocrlf input
+git config --global core.fileMode true
+
+#------------------------------------------------------------------------------
 # Apache2 + PHP-FPM Configuration
 #------------------------------------------------------------------------------
 # Remove default Apache configurations

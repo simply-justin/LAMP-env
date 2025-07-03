@@ -43,6 +43,11 @@ repo_count=$(jq '. | length' "$REPO_FILE")
 # Create development directory
 ensure_directory "$PROJECTS_DIR" || exit 1
 
+# Change group ownership recursively
+sudo chgrp "$DEVGROUP" "$ROOT_DIR"
+sudo chgrp "$DEVGROUP" "$PROJECTS_DIR"
+sudo chmod 2775 "$PROJECTS_DIR"
+
 # Process each repository in parallel for faster setup
 log_debug "Processing $repo_count repositories from configuration"
 
@@ -86,10 +91,6 @@ done
 #-------------------------------------------------------#
 log_info "Setting symbolic links and permissions"
 
-# Change group ownership recursively
-sudo chgrp "$DEVGROUP" "$ROOT_DIR"
-sudo chgrp -R "$DEVGROUP" "$PROJECTS_DIR"
-
 for i in $(seq 0 $((repo_count - 1))); do
     org=$(jq -r ".[$i].org" "$REPO_FILE")
     repo=$(jq -r ".[$i].repo" "$REPO_FILE")
@@ -110,23 +111,14 @@ for i in $(seq 0 $((repo_count - 1))); do
 
     log_debug "Setting secure permissions for $repo_path"
     sudo chgrp -R "$DEVGROUP" "$repo_path"
+    sudo find "$repo_path" -type d -exec chmod 2775 {} \;
+    sudo find "$repo_path" -type f -exec chmod 664 {} \;
 
-    # Known writable runtime paths
-    writable_paths=(
-        "$repo_path/storage"
-        "$repo_path/bootstrap/cache"
-        "$repo_path/public"
-        "$repo_path/.next"
-        "$repo_path/vendor/bin"
-        "$repo_path/public"
-    )
-
-    for path in "${writable_paths[@]}"; do
-        [ -e "$path" ] || continue
-        sudo find "$path" -type d -exec chmod 2775 {} \;
-        sudo find "$path" -type f -exec chmod 664 {} \;
-        log_debug "Adjusted writable permissions for $path"
-    done
+    # Set permissions for the vendor/bin directory
+    if [ -d "$repo_path/vendor/bin" ]; then
+        log_debug "Setting vendor directory permissions"
+        sudo find "$repo_path/vendor/bin" -type f -exec chmod 775 {} \;
+    fi
 
     # Set ACLs for the group
     if command -v setfacl >/dev/null; then

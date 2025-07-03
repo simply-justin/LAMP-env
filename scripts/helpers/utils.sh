@@ -229,6 +229,9 @@ install_dependencies() {
         return 1
     }
 
+    log_debug "Ensure correct line endings in files"
+    git config --local --unset core.fileMode
+
     # Install PHP dependencies if composer.json exists and vendor directory does not exist
     if file_exists "composer.json" && ! directory_exists "vendor"; then
         log_info "Installing PHP dependencies for $repo"
