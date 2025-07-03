@@ -21,7 +21,7 @@ IFS=$'\n\t'
 source "${SCRIPT_DIR}/helpers/include.sh"
 
 # Reconstruct PHP_VERSIONS array from string if present
-IFS=' ' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
+IFS=',' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
 
 #------------------------------------------------------------------------------
 # System Update
@@ -64,7 +64,6 @@ for php_version in "${PHP_VERSIONS[@]}"; do
         "${php_version}-cli"          # Command line interface
         "${php_version}-common"       # Common PHP files
         "${php_version}-curl"         # cURL support
-        "${php_version}-fpm"          # FPM
         "${php_version}-gd"           # GD graphics library
         "${php_version}-intl"         # Internationalization
         "${php_version}-mbstring"     # Multi-byte string support
@@ -73,6 +72,7 @@ for php_version in "${PHP_VERSIONS[@]}"; do
         "${php_version}-redis"        # Redis
         "${php_version}-xml"          # XML support
         "${php_version}-zip"          # ZIP support
+        "${php_version}-fpm"          # FPM
     )
 
     # Install PHP packages

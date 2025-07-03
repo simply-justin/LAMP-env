@@ -19,7 +19,7 @@ IFS=$'\n\t'
 source "${SCRIPT_DIR}/helpers/include.sh"
 
 # Reconstruct PHP_VERSIONS array from string if present
-IFS=' ' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
+IFS=',' read -r -a PHP_VERSIONS <<< "${PHP_VERSIONS_STR:-}"
 
 readonly APACHE_LOCATION="/etc/apache2"
 readonly APACHE_PORTS="${APACHE_LOCATION}/ports.conf"
