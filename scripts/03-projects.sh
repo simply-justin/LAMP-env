@@ -120,6 +120,12 @@ for i in $(seq 0 $((repo_count - 1))); do
         sudo find "$repo_path/vendor/bin" -type f -exec chmod 775 {} \;
     fi
 
+    # Set permissions for the vendor/bin directory
+    if [ -d "$repo_path/.next" ]; then
+        log_debug "Setting .next directory permissions"
+        sudo find "$repo_path/.next" -type f -exec chmod 775 {} \;
+    fi
+
     # Set ACLs for the group
     if command -v setfacl >/dev/null; then
         sudo setfacl -R -m d:u::rwX,d:g::rwX,d:o::--- "$repo_path"
