@@ -43,6 +43,9 @@ repo_count=$(jq '. | length' "$REPO_FILE")
 # Create development directory
 ensure_directory "$PROJECTS_DIR" || exit 1
 
+# Add the current user to the development group
+sudo usermod -aG "$DEVGROUP" "$USER"
+
 # Change group ownership recursively
 sudo chgrp "$DEVGROUP" "$ROOT_DIR"
 sudo chgrp "$DEVGROUP" "$PROJECTS_DIR"
