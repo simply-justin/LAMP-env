@@ -139,6 +139,9 @@ for i in $(seq 0 $((repo_count - 1))); do
         log_debug "Setting .next directory permissions"
         sudo find "$repo_path/.next" -type d -exec chmod 2775 {} \;
         sudo find "$repo_path/.next" -type f -exec chmod 664 {} \;
+
+        sudo find "$repo_path/node_modules" -type d -exec chmod 2775 {} \;
+        sudo find "$repo_path/node_modules" -type f -exec chmod 664 {} \;
     fi
 
     # Set ACLs for the group
