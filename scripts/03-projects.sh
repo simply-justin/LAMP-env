@@ -27,6 +27,15 @@ readonly DEVGROUP="www-data"
 #-------------------------------------------------------#
 log_info "Validating Project Configuration"
 
+# Ensure group exists
+if ! getent group "$DEVGROUP" >/dev/null; then
+    log_warn "Group '$DEVGROUP' does not exist. Creating it."
+    sudo groupadd "$DEVGROUP"
+fi
+
+# Ensure user is part of the development group
+sudo usermod -aG "$DEVGROUP" "$USER"
+
 # Single check for jq, config file, and valid JSON
 if ! package_exists jq || ! file_exists "$REPO_FILE" || ! jq empty "$REPO_FILE" 2>/dev/null; then
     log_error "JQ is required, or the repository configuration file is missing/invalid. Please check your setup."
@@ -42,14 +51,6 @@ repo_count=$(jq '. | length' "$REPO_FILE")
 
 # Create development directory
 ensure_directory "$PROJECTS_DIR" || exit 1
-
-# Add the current user to the development group
-sudo usermod -aG "$DEVGROUP" "$USER"
-
-# Change group ownership recursively
-sudo chgrp "$DEVGROUP" "$ROOT_DIR"
-sudo chgrp "$DEVGROUP" "$PROJECTS_DIR"
-sudo chmod 2775 "$PROJECTS_DIR"
 
 # Process each repository in parallel for faster setup
 log_debug "Processing $repo_count repositories from configuration"
@@ -94,6 +95,14 @@ done
 #-------------------------------------------------------#
 log_info "Setting symbolic links and permissions"
 
+# Change group ownership recursively
+sudo chgrp "$DEVGROUP" "$ROOT_DIR"
+sudo chmod g+rx "$ROOT_DIR"
+
+sudo chgrp "$DEVGROUP" "$PROJECTS_DIR"
+sudo chmod g+rx "$PROJECTS_DIR"
+sudo chmod 2775 "$PROJECTS_DIR"
+
 for i in $(seq 0 $((repo_count - 1))); do
     org=$(jq -r ".[$i].org" "$REPO_FILE")
     repo=$(jq -r ".[$i].repo" "$REPO_FILE")
@@ -114,6 +123,8 @@ for i in $(seq 0 $((repo_count - 1))); do
 
     log_debug "Setting secure permissions for $repo_path"
     sudo chgrp -R "$DEVGROUP" "$repo_path"
+    sudo chmod g+rx "$repo_path"
+
     sudo find "$repo_path" -type d -exec chmod 2775 {} \;
     sudo find "$repo_path" -type f -exec chmod 664 {} \;
 
@@ -126,7 +137,8 @@ for i in $(seq 0 $((repo_count - 1))); do
     # Set permissions for the vendor/bin directory
     if [ -d "$repo_path/.next" ]; then
         log_debug "Setting .next directory permissions"
-        sudo find "$repo_path/.next" -type f -exec chmod 775 {} \;
+        sudo find "$repo_path/.next" -type d -exec chmod 2775 {} \;
+        sudo find "$repo_path/.next" -type f -exec chmod 664 {} \;
     fi
 
     # Set ACLs for the group

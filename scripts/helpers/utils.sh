@@ -241,12 +241,6 @@ install_dependencies() {
         }
     fi
 
-    # Check if Node.js dependencies are already installed
-    if directory_exists "node_modules"; then
-        log_info "Dependencies already installed for $repo"
-        return 0
-    fi
-
     # Detect and install Node.js dependencies using the appropriate package manager
     # Priority: pnpm > yarn > npm
     if file_exists "pnpm-lock.yaml"; then
