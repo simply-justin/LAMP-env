@@ -272,6 +272,16 @@ install_dependencies() {
         }
     fi
 
+    # Check for node_modules directory and presence of 'next' in dependencies
+    if directory_exists "node_modules" && jq -e '.dependencies.next // .devDependencies.next' package.json > /dev/null; then
+        log_debug "Building Next.js project for $repo"
+        if ! npm run build; then
+            log_error "Failed to build Next.js project for $repo"
+            return 1
+        fi
+    fi
+
+    # Check if .env.example exists and create .env if it doesn't
     if file_exists ".env.example" && ! file_exists ".env"; then
         log_info "Creating .env file from .env.example"
         cp ".env.example" ".env" || {
