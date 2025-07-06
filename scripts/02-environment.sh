@@ -7,8 +7,6 @@
 # - Apache web server configuration
 # - PM2 process manager setup
 # - MariaDB database setup
-# - RabbitMQ message broker setup
-# - Redis cache configuration
 #==============================================================================
 
 set -euo pipefail
@@ -178,15 +176,3 @@ EOF
 else
     log_debug "MariaDB already secured. Skipping."
 fi
-
-#------------------------------------------------------------------------------
-# RabbitMQ Configuration
-#------------------------------------------------------------------------------
-log_info "Starting RabbitMQ service"
-enable_service rabbitmq-server
-
-#------------------------------------------------------------------------------
-# Redis Configuration
-#------------------------------------------------------------------------------
-log_info "Starting Redis service"
-enable_service "redis-server"
